@@ -5,7 +5,6 @@ import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 import { 
   useGetGoal, 
@@ -60,7 +59,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const CATEGORIES = [
   "Health", "Career", "Finance", "Learning", "Relationships", "Creative", "Other"
@@ -86,7 +84,6 @@ export default function GoalDetailPage({ id }: { id: string }) {
     query: { enabled: !!id, queryKey: getGetGoalQueryKey(id) } 
   });
   
-  // Fetch some recent logs to show related to this goal (mocking chart data for now based on goal progress)
   const { data: logs } = useListDailyLogs({ limit: 14 });
   
   const updateGoal = useUpdateGoal();
@@ -210,15 +207,12 @@ export default function GoalDetailPage({ id }: { id: string }) {
     );
   }
 
-  // Generate some fake chart data to show progression over time
-  // In a real app, this would come from the backend based on historical log data
-  const chartData = Array.from({ length: 7 }).map((_, i) => {
+  const recentLogDates = new Set(logs?.map((l) => l.logDate) ?? []);
+  const last7Days = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
-    return {
-      name: format(d, 'MMM d'),
-      progress: Math.max(0, goal.progress - (6 - i) * 5 + Math.random() * 10)
-    };
+    const dateStr = format(d, "yyyy-MM-dd");
+    return { label: format(d, "MMM d"), dateStr, hasLog: recentLogDates.has(dateStr) };
   });
 
   return (
@@ -443,45 +437,22 @@ export default function GoalDetailPage({ id }: { id: string }) {
                 </div>
               </div>
               
-              <div className="h-64 w-full mt-8">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} 
-                      dy={10}
-                    />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                      domain={[0, 100]}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "hsl(var(--card))", 
-                        borderColor: "hsl(var(--border))",
-                        borderRadius: "var(--radius)"
-                      }} 
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="progress" 
-                      stroke="hsl(var(--primary))" 
-                      fillOpacity={1} 
-                      fill="url(#colorProgress)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="mt-6">
+                <p className="text-sm font-medium mb-3 text-muted-foreground">Activity — last 7 days</p>
+                <div className="flex gap-2 items-end">
+                  {last7Days.map((day) => (
+                    <div key={day.dateStr} className="flex flex-col items-center gap-1 flex-1">
+                      <div
+                        className={`w-full rounded-sm h-6 ${day.hasLog ? "bg-primary" : "bg-secondary"}`}
+                        title={day.hasLog ? `Log on ${day.label}` : `No log on ${day.label}`}
+                      />
+                      <span className="text-xs text-muted-foreground">{day.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {last7Days.filter((d) => d.hasLog).length} of 7 days logged
+                </p>
               </div>
             </CardContent>
           </Card>

@@ -126,7 +126,15 @@ export default function OnboardingPage() {
 
   const onGoalsSubmit = async () => {
     const filledRows = goalRows.filter((r) => r.title.trim().length > 0);
-    const newErrors = goalRows.map((r) => (r.title.trim() === "" && goalRows.length === 1 ? "Title is required" : null));
+
+    if (filledRows.length === 0) {
+      setGoalErrors(goalRows.map((_, i) => (i === 0 ? "At least one goal title is required" : null)));
+      return;
+    }
+
+    const newErrors = goalRows.map((r) =>
+      r.title.trim() === "" && filledRows.length > 0 ? null : null
+    );
     setGoalErrors(newErrors);
     if (newErrors.some(Boolean)) return;
 
