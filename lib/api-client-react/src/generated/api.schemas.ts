@@ -14,8 +14,8 @@ export interface ErrorResponse {
 }
 
 export interface User {
+  /** Clerk user ID (primary identity key) */
   id: string;
-  clerkId: string;
   email: string;
   /** @nullable */
   phoneHash?: string | null;

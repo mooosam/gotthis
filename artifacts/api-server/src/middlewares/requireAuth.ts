@@ -2,7 +2,6 @@ import { getAuth } from "@clerk/express";
 import type { Request, Response, NextFunction } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 
 export async function requireAuth(
   req: Request,
@@ -19,7 +18,7 @@ export async function requireAuth(
   let [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.clerkId, clerkId));
+    .where(eq(usersTable.id, clerkId));
 
   if (!user) {
     const email =
@@ -29,8 +28,7 @@ export async function requireAuth(
     [user] = await db
       .insert(usersTable)
       .values({
-        id: nanoid(),
-        clerkId,
+        id: clerkId,
         email,
         tier: "free",
         dailyMessageCap: 5,

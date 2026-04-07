@@ -19,8 +19,7 @@ export const HealthCheckResponse = zod.object({
  * @summary Get current user profile
  */
 export const GetMyProfileResponse = zod.object({
-  id: zod.string(),
-  clerkId: zod.string(),
+  id: zod.string().describe("Clerk user ID (primary identity key)"),
   email: zod.string(),
   phoneHash: zod.string().nullish(),
   timezone: zod.string(),
@@ -48,8 +47,7 @@ export const UpdateMyProfileBody = zod.object({
 });
 
 export const UpdateMyProfileResponse = zod.object({
-  id: zod.string(),
-  clerkId: zod.string(),
+  id: zod.string().describe("Clerk user ID (primary identity key)"),
   email: zod.string(),
   phoneHash: zod.string().nullish(),
   timezone: zod.string(),
@@ -68,8 +66,7 @@ export const UpdateMyProfileResponse = zod.object({
  * @summary Mark onboarding as complete
  */
 export const CompleteOnboardingResponse = zod.object({
-  id: zod.string(),
-  clerkId: zod.string(),
+  id: zod.string().describe("Clerk user ID (primary identity key)"),
   email: zod.string(),
   phoneHash: zod.string().nullish(),
   timezone: zod.string(),

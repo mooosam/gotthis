@@ -541,8 +541,7 @@ components:
       properties:
         id:
           type: string
-        clerkId:
-          type: string
+          description: Clerk user ID (primary identity key)
         email:
           type: string
         phoneHash:
@@ -569,7 +568,6 @@ components:
           type: string
       required:
         - id
-        - clerkId
         - email
         - timezone
         - tier

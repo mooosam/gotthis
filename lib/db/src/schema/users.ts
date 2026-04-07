@@ -10,7 +10,6 @@ import { z } from "zod/v4";
 
 export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),
-  clerkId: text("clerk_id").notNull().unique(),
   email: text("email").notNull(),
   phoneHash: text("phone_hash"),
   timezone: text("timezone").notNull().default("UTC"),
