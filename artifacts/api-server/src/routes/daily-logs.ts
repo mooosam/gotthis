@@ -115,6 +115,11 @@ router.patch(
     if (data !== undefined) updates.data = data;
     if (narrative !== undefined) updates.narrative = narrative;
 
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "No fields to update" });
+      return;
+    }
+
     const [log] = await db
       .update(dailyLogsTable)
       .set(updates)

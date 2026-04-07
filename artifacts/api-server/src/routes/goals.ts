@@ -111,6 +111,11 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (progress !== undefined) updates.progress = progress;
   if (successCriteria !== undefined) updates.successCriteria = successCriteria;
 
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No fields to update" });
+    return;
+  }
+
   const [goal] = await db
     .update(goalsTable)
     .set(updates)
