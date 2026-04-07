@@ -65,4 +65,28 @@ The Ritual AI is a goal coaching app where:
 
 Clerk auth is integrated server-side. Protected routes use the `requireAuth` middleware in `artifacts/api-server/src/middlewares/requireAuth.ts`. First-time auth auto-creates a user record in the DB from Clerk session claims.
 
+## Web Dashboard (artifacts/web)
+
+React + Vite frontend at root path `/`. Built with:
+- **Routing**: Wouter (base-path aware)
+- **Auth**: @clerk/react with Clerk proxy
+- **Styling**: Tailwind CSS + shadcn/ui components
+- **Data viz**: Recharts (progress/streak charts)
+- **Theme**: Dark/light mode support, "Parchment & Ink" aesthetic
+
+### Pages
+- `/` — Landing page (public) / redirects authenticated users to /dashboard
+- `/sign-in`, `/sign-up` — Clerk-embedded auth flows
+- `/onboarding` — Timezone setup + optional phone (WhatsApp) for new users
+- `/dashboard` — Stats overview, streaks, recent logs, top goals
+- `/goals` — Goals list with status filtering; create goal dialog
+- `/goal/:goalId` — Goal detail with Recharts progress chart, CRUD operations
+- `/review/:date` — Daily log view/edit for a specific date (YYYY-MM-DD)
+- `/account` — Tier badge, usage meters, profile settings
+
+### Auth Flow
+- New Clerk users are auto-provisioned in the DB on first authenticated request (see `requireAuth.ts`)
+- Users with `onboardingCompleted === false` are redirected to `/onboarding`
+- Protected pages use `<Show when="signed-in">` and `<Show when="signed-out">` from @clerk/react
+
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
