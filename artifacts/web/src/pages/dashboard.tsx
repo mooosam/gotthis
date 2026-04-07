@@ -53,6 +53,7 @@ export default function DashboardPage() {
 
       const result = (await response.json()) as { reply?: string };
       setAiReply(result.reply || "");
+      window.location.reload();
 
       toast({
         title: "Update sent",
