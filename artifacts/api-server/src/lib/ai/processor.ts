@@ -35,22 +35,11 @@ export async function processMessage(
   let totalOutputTokens = classification.outputTokens;
   let totalCacheHitTokens = 0;
 
-  if (intent === "off_topic") {
-    if (totalInputTokens > 0 || totalOutputTokens > 0) {
-      await recordUsage(userId, totalInputTokens, totalOutputTokens, 0);
-    }
-    const { budget: freshBudget } = await loadFreshBudget(userId);
-    return {
-      reply: OFF_TOPIC_REPLY,
-      intent: "off_topic",
-      dailyRemaining: freshBudget.dailyRemaining,
-      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
-    };
-  }
-
   let reply: string;
 
-  if (intent === "morning_ritual") {
+  if (intent === "off_topic") {
+    reply = OFF_TOPIC_REPLY;
+  } else if (intent === "morning_ritual") {
     const result = await runMorningRitual(ctx, message);
     reply = result.response;
     totalInputTokens += result.inputTokens;
@@ -70,9 +59,9 @@ export async function processMessage(
     totalCacheHitTokens += result.cacheHitTokens;
   }
 
-  if (totalInputTokens > 0 || totalOutputTokens > 0) {
-    await recordUsage(userId, totalInputTokens, totalOutputTokens, totalCacheHitTokens);
-  }
+  // Always record usage for every processed request — this increments dailyMessageCount
+  // and updates usage_tracking, ensuring the daily cap is enforced even for 0-token paths.
+  await recordUsage(userId, totalInputTokens, totalOutputTokens, totalCacheHitTokens);
 
   const { budget: freshBudget } = await loadFreshBudget(userId);
 

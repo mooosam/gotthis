@@ -9,7 +9,7 @@ import {
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
-import { getTodayDate, loadFreshBudget } from "./usage.js";
+import { getTodayDate, loadFreshBudget, checkBudgetForUser, getCacheHitTokens } from "./usage.js";
 import { refreshMemorySummary } from "./memory.js";
 
 export interface GoalCompletion {
@@ -122,6 +122,10 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
     messages: extractionMessages,
   });
 
+  const extractionInputTokens = extractionResponse.usage.input_tokens;
+  const extractionOutputTokens = extractionResponse.usage.output_tokens;
+  const extractionCacheHitTokens = getCacheHitTokens(extractionResponse.usage);
+
   const extractedText =
     extractionResponse.content[0]?.type === "text"
       ? extractionResponse.content[0].text.trim()
@@ -186,14 +190,24 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
       .where(and(eq(goalsTable.id, goalUpdate.goalId), eq(goalsTable.userId, ctx.user.id)));
   }
 
-  const { budget: budget2 } = await loadFreshBudget(ctx.user.id);
+  // Load a fresh budget snapshot, then adjust for extraction tokens that have been
+  // used but not yet persisted (they will be recorded in a single recordUsage call
+  // by processor.ts after this handler returns). This ensures the coaching call is
+  // only allowed if the user still has headroom after the extraction call.
+  const { user: freshUser } = await loadFreshBudget(ctx.user.id);
+  const extractionTokensUsed = extractionInputTokens + extractionOutputTokens;
+  const adjustedUser = {
+    ...freshUser,
+    monthlyTokenCount: freshUser.monthlyTokenCount + extractionTokensUsed,
+  };
+  const budget2 = checkBudgetForUser(adjustedUser);
+
   if (!budget2.allowed) {
     return {
-      response: "Daily log saved. " + (budget2.reason ?? "Message limit reached for follow-up."),
-      inputTokens: extractionResponse.usage.input_tokens,
-      outputTokens: extractionResponse.usage.output_tokens,
-      cacheHitTokens:
-        (extractionResponse.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
+      response: "Daily log saved. " + (budget2.reason ?? "Token limit reached."),
+      inputTokens: extractionInputTokens,
+      outputTokens: extractionOutputTokens,
+      cacheHitTokens: extractionCacheHitTokens,
     };
   }
 
@@ -254,14 +268,10 @@ Plain text only. No emojis. No markdown.`;
 
   return {
     response: coachingText,
-    inputTokens:
-      extractionResponse.usage.input_tokens +
-      coachingResponse.usage.input_tokens,
-    outputTokens:
-      extractionResponse.usage.output_tokens +
-      coachingResponse.usage.output_tokens,
+    inputTokens: extractionInputTokens + coachingResponse.usage.input_tokens,
+    outputTokens: extractionOutputTokens + coachingResponse.usage.output_tokens,
     cacheHitTokens:
-      ((extractionResponse.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0) +
-      ((coachingResponse.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0),
+      extractionCacheHitTokens +
+      getCacheHitTokens(coachingResponse.usage),
   };
 }

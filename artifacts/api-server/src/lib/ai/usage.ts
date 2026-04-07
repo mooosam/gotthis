@@ -3,6 +3,15 @@ import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { User } from "@workspace/db";
 
+/**
+ * Typed helper for accessing cache_read_input_tokens from Anthropic usage objects.
+ * The SDK's Usage type does not yet declare this field, but Anthropic returns it at runtime.
+ */
+export function getCacheHitTokens(usage: object): number {
+  const v = (usage as Record<string, unknown>)["cache_read_input_tokens"];
+  return typeof v === "number" ? v : 0;
+}
+
 export interface UsageBudgetCheck {
   allowed: boolean;
   reason?: string;

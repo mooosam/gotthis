@@ -9,7 +9,7 @@ import {
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
-import { loadFreshBudget } from "./usage.js";
+import { loadFreshBudget, getCacheHitTokens } from "./usage.js";
 
 export interface MorningRitualResult {
   response: string;
@@ -129,7 +129,6 @@ Plain text only. No emojis. No markdown. Keep it under 80 words before the link 
     response: responseText,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
-    cacheHitTokens:
-      (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
+    cacheHitTokens: getCacheHitTokens(response.usage),
   };
 }
