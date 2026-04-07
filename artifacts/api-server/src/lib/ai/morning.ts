@@ -130,6 +130,6 @@ Plain text only. No emojis. No markdown. Keep it under 80 words before the link 
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     cacheHitTokens:
-      (response.usage as Record<string, number>).cache_read_input_tokens ?? 0,
+      (response.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
   };
 }

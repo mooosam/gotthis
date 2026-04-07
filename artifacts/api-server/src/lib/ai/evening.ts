@@ -193,7 +193,7 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
       inputTokens: extractionResponse.usage.input_tokens,
       outputTokens: extractionResponse.usage.output_tokens,
       cacheHitTokens:
-        (extractionResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0,
+        (extractionResponse.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0,
     };
   }
 
@@ -261,7 +261,7 @@ Plain text only. No emojis. No markdown.`;
       extractionResponse.usage.output_tokens +
       coachingResponse.usage.output_tokens,
     cacheHitTokens:
-      ((extractionResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0) +
-      ((coachingResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0),
+      ((extractionResponse.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0) +
+      ((coachingResponse.usage as unknown as Record<string, number>).cache_read_input_tokens ?? 0),
   };
 }

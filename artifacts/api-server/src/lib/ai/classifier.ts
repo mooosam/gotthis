@@ -88,13 +88,19 @@ export function classifyIntentKeywords(message: string): MessageIntent {
   return "check_in";
 }
 
+export interface ClassificationResult {
+  intent: MessageIntent;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export async function classifyIntentWithFallback(
   message: string,
-): Promise<MessageIntent> {
+): Promise<ClassificationResult> {
   const keywordResult = classifyIntentKeywords(message);
 
   if (keywordResult !== "check_in" || !isAmbiguous(message)) {
-    return keywordResult;
+    return { intent: keywordResult, inputTokens: 0, outputTokens: 0 };
   }
 
   try {
@@ -133,8 +139,13 @@ Category:`,
       "off_topic",
     ];
     const matched = valid.find((v) => raw.includes(v));
-    return matched ?? "check_in";
+
+    return {
+      intent: matched ?? "check_in",
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    };
   } catch {
-    return "check_in";
+    return { intent: "check_in", inputTokens: 0, outputTokens: 0 };
   }
 }

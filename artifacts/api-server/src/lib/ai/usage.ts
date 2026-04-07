@@ -47,7 +47,7 @@ export function checkBudgetForUser(user: User): UsageBudgetCheck {
 
   const monthlyTokenRemaining = Math.max(0, user.monthlyTokenAllowance - monthlyTokenCount);
 
-  if (monthlyTokenRemaining < 500) {
+  if (monthlyTokenRemaining <= 0) {
     return {
       allowed: false,
       reason: `Monthly token allowance exhausted. Upgrade your plan to continue.`,

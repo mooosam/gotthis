@@ -28,44 +28,50 @@ export async function processMessage(
     };
   }
 
-  const intent = await classifyIntentWithFallback(message);
+  const classification = await classifyIntentWithFallback(message);
+  const { intent } = classification;
+
+  let totalInputTokens = classification.inputTokens;
+  let totalOutputTokens = classification.outputTokens;
+  let totalCacheHitTokens = 0;
 
   if (intent === "off_topic") {
+    if (totalInputTokens > 0 || totalOutputTokens > 0) {
+      await recordUsage(userId, totalInputTokens, totalOutputTokens, 0);
+    }
+    const { budget: freshBudget } = await loadFreshBudget(userId);
     return {
       reply: OFF_TOPIC_REPLY,
       intent: "off_topic",
-      dailyRemaining: initialBudget.dailyRemaining,
-      monthlyTokenRemaining: initialBudget.monthlyTokenRemaining,
+      dailyRemaining: freshBudget.dailyRemaining,
+      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
     };
   }
 
   let reply: string;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let cacheHitTokens = 0;
 
   if (intent === "morning_ritual") {
     const result = await runMorningRitual(ctx, message);
     reply = result.response;
-    inputTokens = result.inputTokens;
-    outputTokens = result.outputTokens;
-    cacheHitTokens = result.cacheHitTokens;
+    totalInputTokens += result.inputTokens;
+    totalOutputTokens += result.outputTokens;
+    totalCacheHitTokens += result.cacheHitTokens;
   } else if (intent === "evening_ritual") {
     const result = await runEveningRitual(ctx, message);
     reply = result.response;
-    inputTokens = result.inputTokens;
-    outputTokens = result.outputTokens;
-    cacheHitTokens = result.cacheHitTokens;
+    totalInputTokens += result.inputTokens;
+    totalOutputTokens += result.outputTokens;
+    totalCacheHitTokens += result.cacheHitTokens;
   } else {
     const result = await runCheckIn(ctx, message, intent);
     reply = result.response;
-    inputTokens = result.inputTokens;
-    outputTokens = result.outputTokens;
-    cacheHitTokens = result.cacheHitTokens;
+    totalInputTokens += result.inputTokens;
+    totalOutputTokens += result.outputTokens;
+    totalCacheHitTokens += result.cacheHitTokens;
   }
 
-  if (inputTokens > 0 || outputTokens > 0) {
-    await recordUsage(userId, inputTokens, outputTokens, cacheHitTokens);
+  if (totalInputTokens > 0 || totalOutputTokens > 0) {
+    await recordUsage(userId, totalInputTokens, totalOutputTokens, totalCacheHitTokens);
   }
 
   const { budget: freshBudget } = await loadFreshBudget(userId);
