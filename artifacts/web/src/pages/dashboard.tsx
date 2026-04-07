@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { format, subDays } from "date-fns";
-import { ArrowRight, Target, Flame, CheckCircle2, TrendingUp } from "lucide-react";
+import { ArrowRight, Target, Flame, CheckCircle2, TrendingUp, Sparkles } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -16,9 +17,55 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
   const { data: stats, isLoading } = useGetDashboardStats();
+  const { toast } = useToast();
+  const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSend = async () => {
+    const content = message.trim();
+    if (!content) {
+      toast({
+        title: "Write something first",
+        description: "Add your update, notes, or progress before sending.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const response = await fetch("/api/ai/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: content }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || "Failed to send update");
+      }
+
+      toast({
+        title: "Update sent",
+        description: "The app has processed your message and updated your goals.",
+      });
+      setMessage("");
+      window.location.reload();
+    } catch {
+      toast({
+        title: "Could not send update",
+        description: "Try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -68,6 +115,32 @@ export default function DashboardPage() {
           </h1>
           <p className="text-muted-foreground mt-2">Your progress at a glance.</p>
         </div>
+
+        <Card className="border-border/40 shadow-sm">
+          <CardHeader>
+            <CardTitle className="font-serif flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Write an update
+            </CardTitle>
+            <CardDescription>
+              Add notes, progress, blockers, or anything important. The app will read it and update the right goals.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Example: I finished the first draft, got stuck on the outline, and want to focus more on fitness this week."
+              className="min-h-[140px] resize-none"
+              data-testid="textarea-dashboard-update"
+            />
+            <div className="flex justify-end">
+              <Button onClick={handleSend} disabled={isSending}>
+                {isSending ? "Sending..." : "Send update"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
