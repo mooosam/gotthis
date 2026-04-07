@@ -186,7 +186,10 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
   for (const goalUpdate of logData.goalUpdates) {
     await db
       .update(goalsTable)
-      .set({ lastCheckedAt: new Date() })
+      .set({
+        progress: goalUpdate.percentProgress,
+        lastCheckedAt: new Date(),
+      })
       .where(and(eq(goalsTable.id, goalUpdate.goalId), eq(goalsTable.userId, ctx.user.id)));
   }
 
