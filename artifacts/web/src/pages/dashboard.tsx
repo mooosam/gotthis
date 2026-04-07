@@ -25,6 +25,7 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [aiReply, setAiReply] = useState("");
 
   const handleSend = async () => {
     const content = message.trim();
@@ -50,12 +51,14 @@ export default function DashboardPage() {
         throw new Error(error?.error || "Failed to send update");
       }
 
+      const result = (await response.json()) as { reply?: string };
+      setAiReply(result.reply || "");
+
       toast({
         title: "Update sent",
-        description: "The app has processed your message and updated your goals.",
+        description: "The app has processed your message.",
       });
       setMessage("");
-      window.location.reload();
     } catch {
       toast({
         title: "Could not send update",
@@ -139,6 +142,11 @@ export default function DashboardPage() {
                 {isSending ? "Sending..." : "Send update"}
               </Button>
             </div>
+            {aiReply && (
+              <div className="rounded-md border border-border/40 bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                {aiReply}
+              </div>
+            )}
           </CardContent>
         </Card>
 

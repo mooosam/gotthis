@@ -38,12 +38,44 @@ router.get(
       .orderBy(desc(dailyLogsTable.logDate))
       .limit(7);
 
+    const dailyLogNotes = await db
+      .select()
+      .from(dailyLogsTable)
+      .where(eq(dailyLogsTable.userId, userId))
+      .orderBy(desc(dailyLogsTable.logDate));
+
     const topGoals = await db
       .select()
       .from(goalsTable)
       .where(eq(goalsTable.userId, userId))
       .orderBy(desc(goalsTable.currentStreak))
       .limit(5);
+
+    const goalNotes = new Map<string, string[]>();
+    for (const log of dailyLogNotes) {
+      const data = log.data as Record<string, unknown> | null;
+      const goalStatuses = data?.goalStatuses as
+        | Array<{ goalId?: string; title?: string; progressNote?: string }>
+        | undefined;
+
+      if (!goalStatuses) {
+        continue;
+      }
+
+      for (const status of goalStatuses) {
+        const goalId = status.goalId;
+        const note = status.progressNote?.trim();
+        if (!goalId || !note) {
+          continue;
+        }
+
+        const existing = goalNotes.get(goalId) ?? [];
+        if (!existing.includes(note)) {
+          existing.push(note);
+          goalNotes.set(goalId, existing);
+        }
+      }
+    }
 
     const totalGoals = goalCounts?.total ?? 0;
     const activeGoals = activeCount?.total ?? 0;
@@ -62,6 +94,7 @@ router.get(
       weeklyCompletionRate,
       recentLogs,
       topGoals,
+      goalNotes: Object.fromEntries(goalNotes),
     });
   },
 );
