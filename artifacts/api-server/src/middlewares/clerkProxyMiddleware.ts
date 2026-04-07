@@ -1,21 +1,3 @@
-/**
- * Clerk Frontend API Proxy Middleware
- *
- * Proxies Clerk Frontend API requests through your domain, enabling Clerk
- * authentication on custom domains and .replit.app deployments without
- * requiring CNAME DNS configuration.
- *
- * See: https://clerk.com/docs/guides/dashboard/dns-domains/proxy-fapi
- *
- * IMPORTANT:
- * - Only active in production (Clerk proxying doesn't work for dev instances)
- * - Must be mounted BEFORE express.json() middleware
- *
- * Usage in app.ts:
- *   import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
- *   app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
- */
-
 import { createProxyMiddleware } from "http-proxy-middleware";
 import type { RequestHandler } from "express";
 

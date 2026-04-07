@@ -4,13 +4,17 @@ import { db, magicLinksTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { nanoid } from "nanoid";
 import { CreateMagicLinkBody, ResolveMagicLinkParams } from "@workspace/api-zod";
+const MagicLinkBodyRefined = CreateMagicLinkBody.refine(
+  (d) => d.targetDate != null || d.targetGoalId != null,
+  { message: "At least one of targetDate or targetGoalId is required" },
+);
 
 const router: IRouter = Router();
 
 router.post("/magic-links", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
 
-  const parsed = CreateMagicLinkBody.safeParse(req.body);
+  const parsed = MagicLinkBodyRefined.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
