@@ -64,6 +64,30 @@ The Ritual AI is a goal coaching app where:
 - `GET /api/dashboard/stats` — dashboard stats (goals, logs, streaks, weekly rate)
 - `POST /api/magic-links` — generate time-limited magic link
 - `GET /api/magic-links/:token/resolve` — resolve magic link (public)
+- `POST /api/ai/message` — send a message to the AI coach (requires auth); returns `{reply, intent, usage}`
+- `POST /api/ai/memory/refresh` — regenerate the rolling memory summary from last 7 days of logs (requires auth)
+
+## AI Ritual Engine (artifacts/api-server/src/lib/ai/)
+
+The AI engine is built around Claude (claude-sonnet-4-6) with prompt caching. Files:
+- `context.ts` — Context Skyscraper assembly: loads user, active goals, memory summary, last 48h logs
+- `classifier.ts` — Keyword-based intent classification: `morning_ritual`, `evening_ritual`, `goal_update`, `check_in`, `off_topic`
+- `usage.ts` — Daily message cap + monthly token budget enforcement; tracks usage in `usage_tracking` table
+- `morning.ts` — Morning ritual handler: sets intentions, references active goals, caches context
+- `evening.ts` — Evening ritual handler: reflection + narrative generation, upserts daily_log, updates goal lastCheckedAt
+- `checkin.ts` — General check-in handler: goal updates, mid-day responses, off-topic redirection
+- `memory.ts` — Rolling memory consolidation using claude-haiku-4-5; summarizes last 7 days into structured JSON
+- `processor.ts` — Entry point: assembles context, checks budget, classifies intent, routes to handler, records usage
+
+### Prompt Caching Strategy
+- System prompt block: `cache_control: {type: "ephemeral"}`
+- User context block (memory + goals): `cache_control: {type: "ephemeral"}`
+- Recent logs block: `cache_control: {type: "ephemeral"}`
+- Current message: no cache
+
+### AI Integration
+- Uses `@workspace/integrations-anthropic-ai` (Replit AI Integrations, no user key needed)
+- Env vars: `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY` (auto-set)
 
 ## Auth
 

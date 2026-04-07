@@ -6,6 +6,7 @@ import dailyLogsRouter from "./daily-logs";
 import memoryRouter from "./memory";
 import dashboardRouter from "./dashboard";
 import magicLinksRouter from "./magic-links";
+import aiRouter from "./ai";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(dailyLogsRouter);
 router.use(memoryRouter);
 router.use(dashboardRouter);
 router.use(magicLinksRouter);
+router.use(aiRouter);
 
 export default router;
