@@ -10,6 +10,18 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User profile operations
+  - name: goals
+    description: Goal tracking operations
+  - name: daily-logs
+    description: Daily log operations
+  - name: memory
+    description: Memory summary operations
+  - name: dashboard
+    description: Dashboard stats operations
+  - name: magic-links
+    description: Magic link operations
 paths:
   /healthz:
     get:
@@ -24,6 +36,393 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /users/me:
+    get:
+      operationId: getMyProfile
+      tags: [users]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateMyProfile
+      tags: [users]
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileBody"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/complete-onboarding:
+    post:
+      operationId: completeOnboarding
+      tags: [users]
+      summary: Mark onboarding as complete
+      responses:
+        "200":
+          description: Onboarding completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goals:
+    get:
+      operationId: listGoals
+      tags: [goals]
+      summary: List goals for current user
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of goals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goal"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createGoal
+      tags: [goals]
+      summary: Create a new goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGoalBody"
+      responses:
+        "201":
+          description: Created goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goals/{id}:
+    get:
+      operationId: getGoal
+      tags: [goals]
+      summary: Get a goal by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateGoal
+      tags: [goals]
+      summary: Update a goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGoalBody"
+      responses:
+        "200":
+          description: Updated goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteGoal
+      tags: [goals]
+      summary: Delete a goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /daily-logs:
+    get:
+      operationId: listDailyLogs
+      tags: [daily-logs]
+      summary: List daily logs for current user
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of daily logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /daily-logs/{date}:
+    get:
+      operationId: getDailyLog
+      tags: [daily-logs]
+      summary: Get daily log for a specific date (YYYY-MM-DD)
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Daily log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /memory:
+    get:
+      operationId: getMemorySummary
+      tags: [memory]
+      summary: Get rolling memory summary for current user
+      responses:
+        "200":
+          description: Memory summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemorySummary"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No memory summary yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard stats summary for current user
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /magic-links:
+    post:
+      operationId: createMagicLink
+      tags: [magic-links]
+      summary: Generate a time-limited magic link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMagicLinkBody"
+      responses:
+        "201":
+          description: Magic link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MagicLinkResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /magic-links/{token}/resolve:
+    get:
+      operationId: resolveMagicLink
+      tags: [magic-links]
+      summary: Resolve a magic link token to its target
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Magic link resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MagicLinkResolved"
+        "404":
+          description: Token not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +433,248 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        clerkId:
+          type: string
+        email:
+          type: string
+        phone:
+          type: ["string", "null"]
+        timezone:
+          type: string
+        tier:
+          type: string
+        onboardingCompleted:
+          type: boolean
+        dailyMessageCount:
+          type: integer
+        dailyMessageCap:
+          type: integer
+        monthlyTokenCount:
+          type: integer
+        monthlyTokenAllowance:
+          type: integer
+        newsletterCadence:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - clerkId
+        - email
+        - timezone
+        - tier
+        - onboardingCompleted
+        - dailyMessageCount
+        - dailyMessageCap
+        - monthlyTokenCount
+        - monthlyTokenAllowance
+        - newsletterCadence
+        - createdAt
+        - updatedAt
+
+    UpdateProfileBody:
+      type: object
+      properties:
+        timezone:
+          type: string
+        phone:
+          type: string
+        newsletterCadence:
+          type: string
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+        deadline:
+          type: ["string", "null"]
+        status:
+          type: string
+        progress:
+          type: integer
+        successCriteria:
+          type: ["string", "null"]
+        currentStreak:
+          type: integer
+        longestStreak:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - userId
+        - title
+        - category
+        - status
+        - progress
+        - currentStreak
+        - longestStreak
+        - createdAt
+        - updatedAt
+
+    CreateGoalBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        deadline:
+          type: string
+        successCriteria:
+          type: string
+      required:
+        - title
+
+    UpdateGoalBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        deadline:
+          type: string
+        status:
+          type: string
+        progress:
+          type: integer
+        successCriteria:
+          type: string
+
+    DailyLog:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        logDate:
+          type: string
+        data:
+          description: JSONB log data
+        narrative:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - userId
+        - logDate
+        - createdAt
+        - updatedAt
+
+    MemorySummary:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        summary:
+          description: JSONB rolling summary object
+        updatedAt:
+          type: string
+      required:
+        - id
+        - userId
+        - updatedAt
+
+    DashboardStats:
+      type: object
+      properties:
+        totalGoals:
+          type: integer
+        activeGoals:
+          type: integer
+        completedGoals:
+          type: integer
+        totalLogs:
+          type: integer
+        currentStreak:
+          type: integer
+        weeklyCompletionRate:
+          type: number
+        recentLogs:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyLog"
+        topGoals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Goal"
+      required:
+        - totalGoals
+        - activeGoals
+        - completedGoals
+        - totalLogs
+        - currentStreak
+        - weeklyCompletionRate
+        - recentLogs
+        - topGoals
+
+    CreateMagicLinkBody:
+      type: object
+      properties:
+        targetDate:
+          type: string
+        targetGoalId:
+          type: string
+
+    MagicLinkResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        url:
+          type: string
+        expiresAt:
+          type: string
+      required:
+        - token
+        - url
+        - expiresAt
+
+    MagicLinkResolved:
+      type: object
+      properties:
+        userId:
+          type: string
+        targetDate:
+          type: ["string", "null"]
+        targetGoalId:
+          type: ["string", "null"]
+      required:
+        - userId

@@ -8,3 +8,127 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface User {
+  id: string;
+  clerkId: string;
+  email: string;
+  /** @nullable */
+  phone?: string | null;
+  timezone: string;
+  tier: string;
+  onboardingCompleted: boolean;
+  dailyMessageCount: number;
+  dailyMessageCap: number;
+  monthlyTokenCount: number;
+  monthlyTokenAllowance: number;
+  newsletterCadence: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateProfileBody {
+  timezone?: string;
+  phone?: string;
+  newsletterCadence?: string;
+}
+
+export interface Goal {
+  id: string;
+  userId: string;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  category: string;
+  /** @nullable */
+  deadline?: string | null;
+  status: string;
+  progress: number;
+  /** @nullable */
+  successCriteria?: string | null;
+  currentStreak: number;
+  longestStreak: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateGoalBody {
+  title: string;
+  description?: string;
+  category?: string;
+  deadline?: string;
+  successCriteria?: string;
+}
+
+export interface UpdateGoalBody {
+  title?: string;
+  description?: string;
+  category?: string;
+  deadline?: string;
+  status?: string;
+  progress?: number;
+  successCriteria?: string;
+}
+
+export interface DailyLog {
+  id: string;
+  userId: string;
+  logDate: string;
+  /** JSONB log data */
+  data?: unknown;
+  /** @nullable */
+  narrative?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemorySummary {
+  id: string;
+  userId: string;
+  /** JSONB rolling summary object */
+  summary?: unknown;
+  updatedAt: string;
+}
+
+export interface DashboardStats {
+  totalGoals: number;
+  activeGoals: number;
+  completedGoals: number;
+  totalLogs: number;
+  currentStreak: number;
+  weeklyCompletionRate: number;
+  recentLogs: DailyLog[];
+  topGoals: Goal[];
+}
+
+export interface CreateMagicLinkBody {
+  targetDate?: string;
+  targetGoalId?: string;
+}
+
+export interface MagicLinkResponse {
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
+export interface MagicLinkResolved {
+  userId: string;
+  /** @nullable */
+  targetDate?: string | null;
+  /** @nullable */
+  targetGoalId?: string | null;
+}
+
+export type ListGoalsParams = {
+  status?: string;
+};
+
+export type ListDailyLogsParams = {
+  limit?: number;
+  offset?: number;
+};

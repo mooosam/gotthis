@@ -14,3 +14,274 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Get current user profile
+ */
+export const GetMyProfileResponse = zod.object({
+  id: zod.string(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  phone: zod.string().nullish(),
+  timezone: zod.string(),
+  tier: zod.string(),
+  onboardingCompleted: zod.boolean(),
+  dailyMessageCount: zod.number(),
+  dailyMessageCap: zod.number(),
+  monthlyTokenCount: zod.number(),
+  monthlyTokenAllowance: zod.number(),
+  newsletterCadence: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update current user profile
+ */
+export const UpdateMyProfileBody = zod.object({
+  timezone: zod.string().optional(),
+  phone: zod.string().optional(),
+  newsletterCadence: zod.string().optional(),
+});
+
+export const UpdateMyProfileResponse = zod.object({
+  id: zod.string(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  phone: zod.string().nullish(),
+  timezone: zod.string(),
+  tier: zod.string(),
+  onboardingCompleted: zod.boolean(),
+  dailyMessageCount: zod.number(),
+  dailyMessageCap: zod.number(),
+  monthlyTokenCount: zod.number(),
+  monthlyTokenAllowance: zod.number(),
+  newsletterCadence: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Mark onboarding as complete
+ */
+export const CompleteOnboardingResponse = zod.object({
+  id: zod.string(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  phone: zod.string().nullish(),
+  timezone: zod.string(),
+  tier: zod.string(),
+  onboardingCompleted: zod.boolean(),
+  dailyMessageCount: zod.number(),
+  dailyMessageCap: zod.number(),
+  monthlyTokenCount: zod.number(),
+  monthlyTokenAllowance: zod.number(),
+  newsletterCadence: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary List goals for current user
+ */
+export const ListGoalsQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+});
+
+export const ListGoalsResponseItem = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  category: zod.string(),
+  deadline: zod.string().nullish(),
+  status: zod.string(),
+  progress: zod.number(),
+  successCriteria: zod.string().nullish(),
+  currentStreak: zod.number(),
+  longestStreak: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListGoalsResponse = zod.array(ListGoalsResponseItem);
+
+/**
+ * @summary Create a new goal
+ */
+export const CreateGoalBody = zod.object({
+  title: zod.string(),
+  description: zod.string().optional(),
+  category: zod.string().optional(),
+  deadline: zod.string().optional(),
+  successCriteria: zod.string().optional(),
+});
+
+/**
+ * @summary Get a goal by ID
+ */
+export const GetGoalParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetGoalResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  category: zod.string(),
+  deadline: zod.string().nullish(),
+  status: zod.string(),
+  progress: zod.number(),
+  successCriteria: zod.string().nullish(),
+  currentStreak: zod.number(),
+  longestStreak: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update a goal
+ */
+export const UpdateGoalParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateGoalBody = zod.object({
+  title: zod.string().optional(),
+  description: zod.string().optional(),
+  category: zod.string().optional(),
+  deadline: zod.string().optional(),
+  status: zod.string().optional(),
+  progress: zod.number().optional(),
+  successCriteria: zod.string().optional(),
+});
+
+export const UpdateGoalResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  category: zod.string(),
+  deadline: zod.string().nullish(),
+  status: zod.string(),
+  progress: zod.number(),
+  successCriteria: zod.string().nullish(),
+  currentStreak: zod.number(),
+  longestStreak: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete a goal
+ */
+export const DeleteGoalParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
+ * @summary List daily logs for current user
+ */
+export const ListDailyLogsQueryParams = zod.object({
+  limit: zod.coerce.number().optional(),
+  offset: zod.coerce.number().optional(),
+});
+
+export const ListDailyLogsResponseItem = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  logDate: zod.string(),
+  data: zod.unknown().optional().describe("JSONB log data"),
+  narrative: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListDailyLogsResponse = zod.array(ListDailyLogsResponseItem);
+
+/**
+ * @summary Get daily log for a specific date (YYYY-MM-DD)
+ */
+export const GetDailyLogParams = zod.object({
+  date: zod.coerce.string(),
+});
+
+export const GetDailyLogResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  logDate: zod.string(),
+  data: zod.unknown().optional().describe("JSONB log data"),
+  narrative: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Get rolling memory summary for current user
+ */
+export const GetMemorySummaryResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  summary: zod.unknown().optional().describe("JSONB rolling summary object"),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Get dashboard stats summary for current user
+ */
+export const GetDashboardStatsResponse = zod.object({
+  totalGoals: zod.number(),
+  activeGoals: zod.number(),
+  completedGoals: zod.number(),
+  totalLogs: zod.number(),
+  currentStreak: zod.number(),
+  weeklyCompletionRate: zod.number(),
+  recentLogs: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      logDate: zod.string(),
+      data: zod.unknown().optional().describe("JSONB log data"),
+      narrative: zod.string().nullish(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+  topGoals: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      category: zod.string(),
+      deadline: zod.string().nullish(),
+      status: zod.string(),
+      progress: zod.number(),
+      successCriteria: zod.string().nullish(),
+      currentStreak: zod.number(),
+      longestStreak: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Generate a time-limited magic link
+ */
+export const CreateMagicLinkBody = zod.object({
+  targetDate: zod.string().optional(),
+  targetGoalId: zod.string().optional(),
+});
+
+/**
+ * @summary Resolve a magic link token to its target
+ */
+export const ResolveMagicLinkParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const ResolveMagicLinkResponse = zod.object({
+  userId: zod.string(),
+  targetDate: zod.string().nullish(),
+  targetGoalId: zod.string().nullish(),
+});

@@ -6,4 +6,18 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./createGoalBody";
+export * from "./createMagicLinkBody";
+export * from "./dailyLog";
+export * from "./dashboardStats";
+export * from "./errorResponse";
+export * from "./goal";
 export * from "./healthStatus";
+export * from "./listDailyLogsParams";
+export * from "./listGoalsParams";
+export * from "./magicLinkResolved";
+export * from "./magicLinkResponse";
+export * from "./memorySummary";
+export * from "./updateGoalBody";
+export * from "./updateProfileBody";
+export * from "./user";
