@@ -1,0 +1,64 @@
+Building a messaging-first SaaS with **Replit AI** requires a "Golden Path" stack. To ensure the AI agent doesn't hallucinate a non-functional product (a "Potemkin Interface"), we will use **Next.js**, **Supabase** (for Auth and Database), and the **Claude 4.6 API**.
+
+By leveraging Replit's **Snapshot Engine**, we can experiment safely, rolling back if the AI drifts during complex integration steps. Here is your phased build plan.
+
+---
+
+### Phase 1: The "Digital Core" (Infrastructure & Identity)
+The foundation must link a user’s WhatsApp number to their email identity so memory is consistent across channels.[1]
+
+1.  **Project Initialization:** Start a new Replit project and prompt the agent: *"Initialize a Next.js app with Tailwind CSS and shadcn/ui. Setup a Supabase project for authentication and database storage"*.
+2.  **Schema Design:** Define three core tables in Supabase:
+    *   `users`: email, phone (WhatsApp JID), and `user_id`.
+    *   `goals`: structured targets with status and progress.[1]
+    *   `episodic_memory`: JSONB storage for daily logs and reflections.[2, 3]
+3.  **Identity Linking:** Configure Supabase Auth to allow email signups and later link phone numbers via the dashboard UI.[4]
+
+### Phase 2: Gateway Configuration (The "Presence" Layer)
+We will build the pipes that let users talk to the app where they already live.[5]
+
+1.  **WhatsApp Cloud API Integration:**
+    *   Create a Meta Developer app. Use Replit to host an endpoint at `/api/whatsapp-webhook`.
+    *   **Prompt Replit AI:** *"Write a POST route to handle WhatsApp Cloud API webhooks. It should verify the token from Meta and parse incoming text messages"*.
+2.  **Email Inbound Parsing:**
+    *   Connect **Resend Pro**. Setup a receiving domain (e.g., `ritual.app`).
+    *   **Prompt Replit AI:** *"Create a webhook handler for Resend inbound emails. Use their @resend/node SDK to extract the sender, subject, and body"*.
+
+### Phase 3: The AI Ritual Engine (Claude 4.6 Orchestration)
+This phase turns raw messages into structured progress. We will use **Prompt Caching** to keep costs at ~$0.34/user.[6]
+
+1.  **The "Context Skyscraper" Implementation:** Create a server-side utility that assembles the prompt:
+    *   **Penthouse:** System prompt (Guardrails: "You are a goal coach. Refuse coding/trivia tasks").[7, 8]
+    *   **Middle Floor:** Retrieve the last 48 hours of `episodic_memory` for the summary.[9, 10]
+2.  **Ritual Logic:**
+    *   **The Morning Ritual:** When message is "Good morning," Claude summarizes yesterday's wins.
+    *   **The Evening Ritual:** On "That's it for today," Claude extracts key data and writes a new JSON log to the `episodic_memory` table.[11, 12]
+
+### Phase 4: Ambient Visualization (Static Charts)
+Since WhatsApp can't run JavaScript, we must generate charts as images.[11, 13]
+
+1.  **QuickChart API Setup:**
+    *   **Prompt Replit AI:** *"Integrate the QuickChart API. Create a function that takes a week of goal completion data from Supabase and returns a PNG URL of a bar chart"*.[13]
+2.  **Template Delivery:** Use WhatsApp **Media Templates**. When the Sunday summary triggers, send the QuickChart PNG directly into the WhatsApp thread as a media message.[14, 15]
+
+### Phase 5: The Reflection Dashboard (Web UI)
+The web app provides a high-fidelity view of the data captured in chat.
+
+1.  **Shadcn/ui Dashboard:**
+    *   **Prompt Replit AI:** *"Build an analytics dashboard page using shadcn/ui. It should fetch data from the goals and episodic_memory tables in Supabase"*.
+2.  **Interactive Stats:** Use `recharts` to build interactive versions of the static bar charts sent to WhatsApp.
+3.  **Manual Controls:** Add a "Goal Manager" where users can refine the AI's understanding of their targets if they prefer a GUI over chat.
+
+### Phase 6: Compliance & Hardening (Launch Ready)
+In 2026, failing Meta's AI policies means an instant ban.[16, 17]
+
+1.  **Intent Guardrails:** Hard-code a refusal trigger in your AI middleware. If the input isn't about goals, Claude should reply: *"I'm your goal coach. Let's get back to your Q1 targets"*.[18, 19]
+2.  **PII Redaction:** Install a library to scan for and redact sensitive info (Social Security, passwords) before it reaches Claude's context or your logs.[8, 20]
+3.  **Deployment:** Deploy the frontend to **Vercel** and the webhook background worker to **Railway** for 99.9% uptime.
+
+---
+
+### Startup Founder's Advice for Replit Build:
+*   **Snapshot Often:** Every time you get a webhook working, take a snapshot. Replit AI is powerful but can "break" an integration while trying to fix a CSS bug.
+*   **Prompt for Errors:** Use **BugMail** or similar. If your webhook fails, have the AI send you an email explaining *why* (e.g., "Postgres column missing") so you don't spend hours debugging "Silent 500" errors.
+*   **Watch the Burn:** Monitor your **Claude Usage API**. At 1,000 users, your infrastructure should cost ~$319/mo. If it's higher, you aren't caching your system prompts correctly.[11, 21]

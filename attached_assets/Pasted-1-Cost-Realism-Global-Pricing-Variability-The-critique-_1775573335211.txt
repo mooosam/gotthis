@@ -1,0 +1,35 @@
+1. Cost Realism & Global Pricing Variability
+The critique is correct that $319/month is the "best-case scenario." In 2026, the biggest hidden risk is Destination-Based Billing.
+
+The Disparity: Sending a marketing template to a user in India costs approximately $0.01, whereas the same message to a user in Germany can cost up to $0.22—a 22x difference.
+
+The Fix: You must tell Replit AI to implement a Usage Budgeting System. Each user should have a monthly_token_allowance and a daily_message_cap. If they exceed this, the AI should politely inform them they’ve hit their plan limit to protect your API wallet.
+
+2. Timezone Handling (The "Ritual" Glue)
+A "Good Morning" ritual is useless if it arrives at 2:00 AM.
+
+Onboarding Requirement: During the first conversation, the bot must ask for the user's location or timezone.
+
+Technical Logic: Replit needs to store this as an IANA timezone string (e.g., America/New_York) in the Supabase profiles table. All "cron" jobs for summaries must then be calculated relative to the user's local time, not the server's UTC time.
+
+3. BSP Selection vs. Direct Meta Integration
+The plan previously mentioned "WhatsApp Cloud API," which usually implies going direct with Meta.
+
+Founder's Advice: For a startup, going direct is a "time-sink" involving multi-week business verification.
+
+The Better Path: Use a Business Solution Provider (BSP) like 360dialog or Wati. They offer "Embedded Signup" which allows your users to link their numbers in minutes. It costs slightly more per message, but it reduces your engineering overhead by months.
+
+4. Email Threading & Reliability
+The critique regarding Resend's inbound maturity is valid for complex threading.
+
+Threading Strategy: To match a user's email reply to their goal log, you must track the Message-ID of every email you send and look for it in the In-Reply-To or References headers of the incoming webhook.
+
+Alternative: If Resend struggles, Postmark Inbound is the industry gold standard for converting messy emails into clean JSON for your Replit webhooks.
+
+5. Onboarding: The "Moment of Truth"
+Your Replit build needs a dedicated Phase 0: The First Contact.
+
+The Flow: When a user first scans the QR code, they shouldn't face a blank screen. The bot should immediately send a "Welcome Sequence" that helps them set their first three goals and confirms their timezone.
+
+6. Clarification on "Claude 4.6"
+The critique suggests this name is a placeholder. However, based on the 2026 model landscape, Claude Sonnet 4.6 and Opus 4.6 are the active production models, featuring a 1-million token context window as standard.
