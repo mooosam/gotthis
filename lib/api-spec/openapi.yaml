@@ -291,6 +291,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createDailyLog
+      tags: [daily-logs]
+      summary: Create a daily log entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDailyLogBody"
+      responses:
+        "201":
+          description: Created daily log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /daily-logs/{date}:
     get:
@@ -310,6 +339,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DailyLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateDailyLog
+      tags: [daily-logs]
+      summary: Update a daily log entry
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDailyLogBody"
+      responses:
+        "200":
+          description: Updated daily log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteDailyLog
+      tags: [daily-logs]
+      summary: Delete a daily log entry
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
         "401":
           description: Unauthorized
           content:
@@ -450,7 +545,7 @@ components:
           type: string
         email:
           type: string
-        phone:
+        phoneHash:
           type: ["string", "null"]
         timezone:
           type: string
@@ -494,6 +589,7 @@ components:
           type: string
         phone:
           type: string
+          description: Raw phone number — will be hashed before storage
         newsletterCadence:
           type: string
 
@@ -644,6 +740,27 @@ components:
         - weeklyCompletionRate
         - recentLogs
         - topGoals
+
+    CreateDailyLogBody:
+      type: object
+      properties:
+        logDate:
+          type: string
+          description: Date in YYYY-MM-DD format
+        data:
+          description: Structured JSONB log data
+        narrative:
+          type: string
+      required:
+        - logDate
+
+    UpdateDailyLogBody:
+      type: object
+      properties:
+        data:
+          description: Structured JSONB log data
+        narrative:
+          type: string
 
     CreateMagicLinkBody:
       type: object

@@ -12,7 +12,7 @@ export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),
   clerkId: text("clerk_id").notNull().unique(),
   email: text("email").notNull(),
-  phone: text("phone"),
+  phoneHash: text("phone_hash"),
   timezone: text("timezone").notNull().default("UTC"),
   tier: text("tier").notNull().default("free"),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),

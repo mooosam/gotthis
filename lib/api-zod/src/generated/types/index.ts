@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./createDailyLogBody";
 export * from "./createGoalBody";
 export * from "./createMagicLinkBody";
 export * from "./dailyLog";
@@ -18,6 +19,7 @@ export * from "./listGoalsParams";
 export * from "./magicLinkResolved";
 export * from "./magicLinkResponse";
 export * from "./memorySummary";
+export * from "./updateDailyLogBody";
 export * from "./updateGoalBody";
 export * from "./updateProfileBody";
 export * from "./user";

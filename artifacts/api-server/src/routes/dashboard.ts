@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, and, count, desc } from "drizzle-orm";
 import { db, goalsTable, dailyLogsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 
@@ -19,12 +19,12 @@ router.get(
     const [activeCount] = await db
       .select({ total: count() })
       .from(goalsTable)
-      .where(eq(goalsTable.userId, userId));
+      .where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "active")));
 
     const [completedCount] = await db
       .select({ total: count() })
       .from(goalsTable)
-      .where(eq(goalsTable.userId, userId));
+      .where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "completed")));
 
     const [logCount] = await db
       .select({ total: count() })
@@ -49,9 +49,9 @@ router.get(
     const activeGoals = activeCount?.total ?? 0;
     const completedGoals = completedCount?.total ?? 0;
     const totalLogs = logCount?.total ?? 0;
-    const currentStreak =
-      topGoals.length > 0 ? topGoals[0].currentStreak : 0;
-    const weeklyCompletionRate = totalLogs > 0 ? Math.min(recentLogs.length / 7, 1) : 0;
+    const currentStreak = topGoals.length > 0 ? topGoals[0].currentStreak : 0;
+    const weeklyCompletionRate =
+      totalLogs > 0 ? Math.min(recentLogs.length / 7, 1) : 0;
 
     res.json({
       totalGoals,

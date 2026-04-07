@@ -18,7 +18,7 @@ export interface User {
   clerkId: string;
   email: string;
   /** @nullable */
-  phone?: string | null;
+  phoneHash?: string | null;
   timezone: string;
   tier: string;
   onboardingCompleted: boolean;
@@ -33,6 +33,7 @@ export interface User {
 
 export interface UpdateProfileBody {
   timezone?: string;
+  /** Raw phone number — will be hashed before storage */
   phone?: string;
   newsletterCadence?: string;
 }
@@ -103,6 +104,20 @@ export interface DashboardStats {
   weeklyCompletionRate: number;
   recentLogs: DailyLog[];
   topGoals: Goal[];
+}
+
+export interface CreateDailyLogBody {
+  /** Date in YYYY-MM-DD format */
+  logDate: string;
+  /** Structured JSONB log data */
+  data?: unknown;
+  narrative?: string;
+}
+
+export interface UpdateDailyLogBody {
+  /** Structured JSONB log data */
+  data?: unknown;
+  narrative?: string;
 }
 
 export interface CreateMagicLinkBody {

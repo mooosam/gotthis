@@ -3,13 +3,27 @@ import { eq, and } from "drizzle-orm";
 import { db, goalsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { nanoid } from "nanoid";
+import {
+  CreateGoalBody,
+  ListGoalsQueryParams,
+  UpdateGoalBody,
+  GetGoalParams,
+  UpdateGoalParams,
+  DeleteGoalParams,
+} from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
 router.get("/goals", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { status } = req.query as { status?: string };
 
+  const parsed = ListGoalsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { status } = parsed.data;
   const conditions = [eq(goalsTable.userId, userId)];
   if (status) conditions.push(eq(goalsTable.status, status));
 
@@ -24,19 +38,14 @@ router.get("/goals", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/goals", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { title, description, category, deadline, successCriteria } =
-    req.body as {
-      title?: string;
-      description?: string;
-      category?: string;
-      deadline?: string;
-      successCriteria?: string;
-    };
 
-  if (!title) {
-    res.status(400).json({ error: "Title is required" });
+  const parsed = CreateGoalBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
     return;
   }
+
+  const { title, description, category, deadline, successCriteria } = parsed.data;
 
   const [goal] = await db
     .insert(goalsTable)
@@ -56,12 +65,17 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const parsed = GetGoalParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
 
   const [goal] = await db
     .select()
     .from(goalsTable)
-    .where(and(eq(goalsTable.id, rawId), eq(goalsTable.userId, userId)));
+    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
 
   if (!goal) {
     res.status(404).json({ error: "Goal not found" });
@@ -73,19 +87,22 @@ router.get("/goals/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const { title, description, category, deadline, status, progress, successCriteria } =
-    req.body as {
-      title?: string;
-      description?: string;
-      category?: string;
-      deadline?: string;
-      status?: string;
-      progress?: number;
-      successCriteria?: string;
-    };
 
-  const updates: Partial<typeof goalsTable.$inferSelect> = {};
+  const paramsParsed = UpdateGoalParams.safeParse(req.params);
+  if (!paramsParsed.success) {
+    res.status(400).json({ error: paramsParsed.error.message });
+    return;
+  }
+
+  const bodyParsed = UpdateGoalBody.safeParse(req.body);
+  if (!bodyParsed.success) {
+    res.status(400).json({ error: bodyParsed.error.message });
+    return;
+  }
+
+  const { title, description, category, deadline, status, progress, successCriteria } = bodyParsed.data;
+
+  const updates: Partial<typeof goalsTable.$inferInsert> = {};
   if (title !== undefined) updates.title = title;
   if (description !== undefined) updates.description = description;
   if (category !== undefined) updates.category = category;
@@ -97,7 +114,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const [goal] = await db
     .update(goalsTable)
     .set(updates)
-    .where(and(eq(goalsTable.id, rawId), eq(goalsTable.userId, userId)))
+    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)))
     .returning();
 
   if (!goal) {
@@ -110,11 +127,16 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.delete("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const parsed = DeleteGoalParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
 
   const [goal] = await db
     .delete(goalsTable)
-    .where(and(eq(goalsTable.id, rawId), eq(goalsTable.userId, userId)))
+    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)))
     .returning();
 
   if (!goal) {

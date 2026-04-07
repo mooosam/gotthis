@@ -8,6 +8,7 @@
 
 export interface UpdateProfileBody {
   timezone?: string;
+  /** Raw phone number — will be hashed before storage */
   phone?: string;
   newsletterCadence?: string;
 }

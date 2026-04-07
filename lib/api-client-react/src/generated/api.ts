@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  CreateDailyLogBody,
   CreateGoalBody,
   CreateMagicLinkBody,
   DailyLog,
@@ -29,6 +30,7 @@ import type {
   MagicLinkResolved,
   MagicLinkResponse,
   MemorySummary,
+  UpdateDailyLogBody,
   UpdateGoalBody,
   UpdateProfileBody,
   User,
@@ -882,6 +884,92 @@ export function useListDailyLogs<
 }
 
 /**
+ * @summary Create a daily log entry
+ */
+export const getCreateDailyLogUrl = () => {
+  return `/api/daily-logs`;
+};
+
+export const createDailyLog = async (
+  createDailyLogBody: CreateDailyLogBody,
+  options?: RequestInit,
+): Promise<DailyLog> => {
+  return customFetch<DailyLog>(getCreateDailyLogUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createDailyLogBody),
+  });
+};
+
+export const getCreateDailyLogMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDailyLog>>,
+    TError,
+    { data: BodyType<CreateDailyLogBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createDailyLog>>,
+  TError,
+  { data: BodyType<CreateDailyLogBody> },
+  TContext
+> => {
+  const mutationKey = ["createDailyLog"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createDailyLog>>,
+    { data: BodyType<CreateDailyLogBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createDailyLog(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateDailyLogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createDailyLog>>
+>;
+export type CreateDailyLogMutationBody = BodyType<CreateDailyLogBody>;
+export type CreateDailyLogMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a daily log entry
+ */
+export const useCreateDailyLog = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDailyLog>>,
+    TError,
+    { data: BodyType<CreateDailyLogBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createDailyLog>>,
+  TError,
+  { data: BodyType<CreateDailyLogBody> },
+  TContext
+> => {
+  return useMutation(getCreateDailyLogMutationOptions(options));
+};
+
+/**
  * @summary Get daily log for a specific date (YYYY-MM-DD)
  */
 export const getGetDailyLogUrl = (date: string) => {
@@ -967,6 +1055,177 @@ export function useGetDailyLog<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Update a daily log entry
+ */
+export const getUpdateDailyLogUrl = (date: string) => {
+  return `/api/daily-logs/${date}`;
+};
+
+export const updateDailyLog = async (
+  date: string,
+  updateDailyLogBody: UpdateDailyLogBody,
+  options?: RequestInit,
+): Promise<DailyLog> => {
+  return customFetch<DailyLog>(getUpdateDailyLogUrl(date), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateDailyLogBody),
+  });
+};
+
+export const getUpdateDailyLogMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateDailyLog>>,
+    TError,
+    { date: string; data: BodyType<UpdateDailyLogBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateDailyLog>>,
+  TError,
+  { date: string; data: BodyType<UpdateDailyLogBody> },
+  TContext
+> => {
+  const mutationKey = ["updateDailyLog"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateDailyLog>>,
+    { date: string; data: BodyType<UpdateDailyLogBody> }
+  > = (props) => {
+    const { date, data } = props ?? {};
+
+    return updateDailyLog(date, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateDailyLogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateDailyLog>>
+>;
+export type UpdateDailyLogMutationBody = BodyType<UpdateDailyLogBody>;
+export type UpdateDailyLogMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a daily log entry
+ */
+export const useUpdateDailyLog = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateDailyLog>>,
+    TError,
+    { date: string; data: BodyType<UpdateDailyLogBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateDailyLog>>,
+  TError,
+  { date: string; data: BodyType<UpdateDailyLogBody> },
+  TContext
+> => {
+  return useMutation(getUpdateDailyLogMutationOptions(options));
+};
+
+/**
+ * @summary Delete a daily log entry
+ */
+export const getDeleteDailyLogUrl = (date: string) => {
+  return `/api/daily-logs/${date}`;
+};
+
+export const deleteDailyLog = async (
+  date: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteDailyLogUrl(date), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteDailyLogMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDailyLog>>,
+    TError,
+    { date: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteDailyLog>>,
+  TError,
+  { date: string },
+  TContext
+> => {
+  const mutationKey = ["deleteDailyLog"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteDailyLog>>,
+    { date: string }
+  > = (props) => {
+    const { date } = props ?? {};
+
+    return deleteDailyLog(date, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteDailyLogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteDailyLog>>
+>;
+
+export type DeleteDailyLogMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a daily log entry
+ */
+export const useDeleteDailyLog = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDailyLog>>,
+    TError,
+    { date: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteDailyLog>>,
+  TError,
+  { date: string },
+  TContext
+> => {
+  return useMutation(getDeleteDailyLogMutationOptions(options));
+};
 
 /**
  * @summary Get rolling memory summary for current user

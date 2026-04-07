@@ -3,15 +3,20 @@ import { eq } from "drizzle-orm";
 import { db, magicLinksTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { nanoid } from "nanoid";
+import { CreateMagicLinkBody, ResolveMagicLinkParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
 router.post("/magic-links", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { targetDate, targetGoalId } = req.body as {
-    targetDate?: string;
-    targetGoalId?: string;
-  };
+
+  const parsed = CreateMagicLinkBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { targetDate, targetGoalId } = parsed.data;
 
   const token = nanoid(32);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -46,14 +51,16 @@ router.post("/magic-links", requireAuth, async (req, res): Promise<void> => {
 router.get(
   "/magic-links/:token/resolve",
   async (req, res): Promise<void> => {
-    const rawToken = Array.isArray(req.params.token)
-      ? req.params.token[0]
-      : req.params.token;
+    const parsed = ResolveMagicLinkParams.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
 
     const [link] = await db
       .select()
       .from(magicLinksTable)
-      .where(eq(magicLinksTable.token, rawToken));
+      .where(eq(magicLinksTable.token, parsed.data.token));
 
     if (!link || link.expiresAt < new Date()) {
       res.status(404).json({ error: "Magic link not found or expired" });

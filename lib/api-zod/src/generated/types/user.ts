@@ -11,7 +11,7 @@ export interface User {
   clerkId: string;
   email: string;
   /** @nullable */
-  phone?: string | null;
+  phoneHash?: string | null;
   timezone: string;
   tier: string;
   onboardingCompleted: boolean;

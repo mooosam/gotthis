@@ -22,7 +22,7 @@ export const GetMyProfileResponse = zod.object({
   id: zod.string(),
   clerkId: zod.string(),
   email: zod.string(),
-  phone: zod.string().nullish(),
+  phoneHash: zod.string().nullish(),
   timezone: zod.string(),
   tier: zod.string(),
   onboardingCompleted: zod.boolean(),
@@ -40,7 +40,10 @@ export const GetMyProfileResponse = zod.object({
  */
 export const UpdateMyProfileBody = zod.object({
   timezone: zod.string().optional(),
-  phone: zod.string().optional(),
+  phone: zod
+    .string()
+    .optional()
+    .describe("Raw phone number — will be hashed before storage"),
   newsletterCadence: zod.string().optional(),
 });
 
@@ -48,7 +51,7 @@ export const UpdateMyProfileResponse = zod.object({
   id: zod.string(),
   clerkId: zod.string(),
   email: zod.string(),
-  phone: zod.string().nullish(),
+  phoneHash: zod.string().nullish(),
   timezone: zod.string(),
   tier: zod.string(),
   onboardingCompleted: zod.boolean(),
@@ -68,7 +71,7 @@ export const CompleteOnboardingResponse = zod.object({
   id: zod.string(),
   clerkId: zod.string(),
   email: zod.string(),
-  phone: zod.string().nullish(),
+  phoneHash: zod.string().nullish(),
   timezone: zod.string(),
   tier: zod.string(),
   onboardingCompleted: zod.boolean(),
@@ -199,6 +202,15 @@ export const ListDailyLogsResponseItem = zod.object({
 export const ListDailyLogsResponse = zod.array(ListDailyLogsResponseItem);
 
 /**
+ * @summary Create a daily log entry
+ */
+export const CreateDailyLogBody = zod.object({
+  logDate: zod.string().describe("Date in YYYY-MM-DD format"),
+  data: zod.unknown().optional().describe("Structured JSONB log data"),
+  narrative: zod.string().optional(),
+});
+
+/**
  * @summary Get daily log for a specific date (YYYY-MM-DD)
  */
 export const GetDailyLogParams = zod.object({
@@ -213,6 +225,35 @@ export const GetDailyLogResponse = zod.object({
   narrative: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update a daily log entry
+ */
+export const UpdateDailyLogParams = zod.object({
+  date: zod.coerce.string(),
+});
+
+export const UpdateDailyLogBody = zod.object({
+  data: zod.unknown().optional().describe("Structured JSONB log data"),
+  narrative: zod.string().optional(),
+});
+
+export const UpdateDailyLogResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  logDate: zod.string(),
+  data: zod.unknown().optional().describe("JSONB log data"),
+  narrative: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete a daily log entry
+ */
+export const DeleteDailyLogParams = zod.object({
+  date: zod.coerce.string(),
 });
 
 /**
