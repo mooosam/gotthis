@@ -8,7 +8,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import NotFound from "@/pages/not-found";
-import LandingPage from "@/pages/landing";
 import OnboardingPage from "@/pages/onboarding";
 import DashboardPage from "@/pages/dashboard";
 import GoalsPage from "@/pages/goals";
@@ -75,7 +74,7 @@ function HomeRedirect() {
         <Redirect to="/dashboard" />
       </Show>
       <Show when="signed-out">
-        <LandingPage />
+        <Redirect to="/sign-in" />
       </Show>
     </>
   );

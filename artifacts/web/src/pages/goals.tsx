@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Plus, Check, Target, Flame, PauseCircle, Trash2 } from "lucide-react";
+import { Plus, Check, Target, Flame, PauseCircle, Trash2, Pencil, Minus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -84,12 +85,30 @@ const goalSchema = z.object({
   successCriteria: z.string().optional(),
 });
 
+const editGoalSchema = goalSchema.extend({
+  progress: z.number().min(0).max(100),
+});
+
 type GoalValues = z.infer<typeof goalSchema>;
+type EditGoalValues = z.infer<typeof editGoalSchema>;
+
+interface GoalRow {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  deadline: string | null;
+  successCriteria: string | null;
+  status: string;
+  progress: number;
+  currentStreak: number;
+}
 
 export default function GoalsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<GoalRow | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const { data: goals, isLoading } = useListGoals({
@@ -101,7 +120,7 @@ export default function GoalsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const form = useForm<GoalValues>({
+  const createForm = useForm<GoalValues>({
     resolver: zodResolver(goalSchema),
     defaultValues: {
       title: "",
@@ -112,12 +131,24 @@ export default function GoalsPage() {
     },
   });
 
+  const editForm = useForm<EditGoalValues>({
+    resolver: zodResolver(editGoalSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      category: "Health",
+      deadline: "",
+      successCriteria: "",
+      progress: 0,
+    },
+  });
+
   const invalidateGoals = () => {
     queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey({ status: statusFilter }) });
   };
 
-  const onSubmit = async (data: GoalValues) => {
+  const onCreateSubmit = async (data: GoalValues) => {
     try {
       await createGoal.mutateAsync({
         data: {
@@ -131,9 +162,43 @@ export default function GoalsPage() {
       invalidateGoals();
       toast({ title: "Goal created" });
       setIsCreateOpen(false);
-      form.reset();
+      createForm.reset();
     } catch {
       toast({ title: "Failed to create goal", variant: "destructive" });
+    }
+  };
+
+  const openEdit = (goal: GoalRow) => {
+    setEditTarget(goal);
+    editForm.reset({
+      title: goal.title,
+      description: goal.description || "",
+      category: goal.category,
+      deadline: goal.deadline || "",
+      successCriteria: goal.successCriteria || "",
+      progress: goal.progress,
+    });
+  };
+
+  const onEditSubmit = async (data: EditGoalValues) => {
+    if (!editTarget) return;
+    try {
+      await updateGoal.mutateAsync({
+        id: editTarget.id,
+        data: {
+          title: data.title,
+          description: data.description || undefined,
+          category: data.category,
+          deadline: data.deadline || undefined,
+          successCriteria: data.successCriteria || undefined,
+          progress: data.progress,
+        },
+      });
+      invalidateGoals();
+      toast({ title: "Goal updated" });
+      setEditTarget(null);
+    } catch {
+      toast({ title: "Failed to update goal", variant: "destructive" });
     }
   };
 
@@ -144,6 +209,16 @@ export default function GoalsPage() {
       toast({ title: "Goal paused" });
     } catch {
       toast({ title: "Failed to pause goal", variant: "destructive" });
+    }
+  };
+
+  const handleResume = async (id: string) => {
+    try {
+      await updateGoal.mutateAsync({ id, data: { status: "active" } });
+      invalidateGoals();
+      toast({ title: "Goal resumed" });
+    } catch {
+      toast({ title: "Failed to resume goal", variant: "destructive" });
     }
   };
 
@@ -190,10 +265,10 @@ export default function GoalsPage() {
                   Define what you want to achieve and set the parameters for success.
                 </DialogDescription>
               </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+              <Form {...createForm}>
+                <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4 py-4">
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="title"
                     render={({ field }) => (
                       <FormItem>
@@ -212,7 +287,7 @@ export default function GoalsPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
-                      control={form.control}
+                      control={createForm.control}
                       name="category"
                       render={({ field }) => (
                         <FormItem>
@@ -237,7 +312,7 @@ export default function GoalsPage() {
                     />
 
                     <FormField
-                      control={form.control}
+                      control={createForm.control}
                       name="deadline"
                       render={({ field }) => (
                         <FormItem>
@@ -256,7 +331,7 @@ export default function GoalsPage() {
                   </div>
 
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="description"
                     render={({ field }) => (
                       <FormItem>
@@ -274,7 +349,7 @@ export default function GoalsPage() {
                   />
 
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="successCriteria"
                     render={({ field }) => (
                       <FormItem>
@@ -310,18 +385,10 @@ export default function GoalsPage() {
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full sm:w-auto">
             <TabsList>
-              <TabsTrigger value="active" data-testid="tab-active">
-                Active
-              </TabsTrigger>
-              <TabsTrigger value="completed" data-testid="tab-completed">
-                Completed
-              </TabsTrigger>
-              <TabsTrigger value="paused" data-testid="tab-paused">
-                Paused
-              </TabsTrigger>
-              <TabsTrigger value="all" data-testid="tab-all">
-                All
-              </TabsTrigger>
+              <TabsTrigger value="active" data-testid="tab-active">Active</TabsTrigger>
+              <TabsTrigger value="completed" data-testid="tab-completed">Completed</TabsTrigger>
+              <TabsTrigger value="paused" data-testid="tab-paused">Paused</TabsTrigger>
+              <TabsTrigger value="all" data-testid="tab-all">All</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -353,7 +420,7 @@ export default function GoalsPage() {
             {filteredGoals.map((goal) => (
               <Card
                 key={goal.id}
-                className="h-full flex flex-col border-border/40 shadow-sm relative"
+                className="h-full flex flex-col border-border/40 shadow-sm"
                 data-testid={`card-goal-${goal.id}`}
               >
                 <CardHeader className="pb-3">
@@ -384,10 +451,11 @@ export default function GoalsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/goal/${goal.id}`}>
-                            <span>View &amp; Edit</span>
-                          </Link>
+                        <DropdownMenuItem
+                          onClick={() => openEdit(goal as GoalRow)}
+                          data-testid={`menu-edit-${goal.id}`}
+                        >
+                          <Pencil className="mr-2 h-4 w-4" /> Edit
                         </DropdownMenuItem>
                         {goal.status !== "paused" && (
                           <DropdownMenuItem
@@ -399,23 +467,17 @@ export default function GoalsPage() {
                         )}
                         {goal.status === "paused" && (
                           <DropdownMenuItem
-                            onClick={async () => {
-                              try {
-                                await updateGoal.mutateAsync({
-                                  id: goal.id,
-                                  data: { status: "active" },
-                                });
-                                invalidateGoals();
-                                toast({ title: "Goal resumed" });
-                              } catch {
-                                toast({ title: "Failed to resume goal", variant: "destructive" });
-                              }
-                            }}
+                            onClick={() => handleResume(goal.id)}
                             data-testid={`menu-resume-${goal.id}`}
                           >
                             <Check className="mr-2 h-4 w-4" /> Resume
                           </DropdownMenuItem>
                         )}
+                        <DropdownMenuItem asChild>
+                          <Link href={`/goal/${goal.id}`}>
+                            <span>View detail</span>
+                          </Link>
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
@@ -482,6 +544,153 @@ export default function GoalsPage() {
           </div>
         )}
       </div>
+
+      {/* Edit dialog */}
+      <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif">Edit goal</DialogTitle>
+            <DialogDescription>Update your goal details and adjust your progress.</DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 py-2">
+              <FormField
+                control={editForm.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl>
+                      <Input {...field} data-testid="input-edit-goal-title" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editForm.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-goal-category">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {CATEGORIES.filter((c) => c !== "All").map((cat) => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={editForm.control}
+                  name="deadline"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Deadline</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} data-testid="input-edit-goal-deadline" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={editForm.control}
+                name="successCriteria"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Success Criteria</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="How will you know when you've achieved this?" className="resize-none" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="progress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Progress (%)</FormLabel>
+                    <FormControl>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 w-9 p-0"
+                          onClick={() => field.onChange(Math.max(0, field.value - 5))}
+                          aria-label="Decrease progress"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={field.value}
+                          onChange={(e) => field.onChange(Math.max(0, Math.min(100, Number(e.target.value))))}
+                          className="text-center w-20"
+                          data-testid="input-edit-goal-progress"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 w-9 p-0"
+                          onClick={() => field.onChange(Math.min(100, field.value + 5))}
+                          aria-label="Increase progress"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <div className="flex-1 bg-secondary rounded-full h-2 ml-2">
+                          <div
+                            className="bg-primary h-2 rounded-full transition-all"
+                            style={{ width: `${field.value}%` }}
+                          />
+                        </div>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditTarget(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateGoal.isPending}
+                  data-testid="button-save-goal-edit"
+                >
+                  {updateGoal.isPending ? "Saving..." : "Save changes"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation dialog */}
       <AlertDialog

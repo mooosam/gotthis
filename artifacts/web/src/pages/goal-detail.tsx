@@ -136,7 +136,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
           title: data.title,
           description: data.description || undefined,
           category: data.category,
-          deadline: data.deadline ? new Date(data.deadline).toISOString() : null,
+          deadline: data.deadline || undefined,
           successCriteria: data.successCriteria || undefined,
           status: data.status,
         }
