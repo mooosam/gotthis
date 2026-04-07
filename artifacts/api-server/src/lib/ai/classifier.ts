@@ -145,7 +145,8 @@ Category:`,
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     };
-  } catch {
+  } catch (error) {
+    console.warn("Intent classification fallback failed", error);
     return { intent: "check_in", inputTokens: 0, outputTokens: 0 };
   }
 }
