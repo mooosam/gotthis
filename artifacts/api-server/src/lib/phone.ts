@@ -1,6 +1,14 @@
 import { createHmac } from "crypto";
 
-const PHONE_PEPPER = process.env.PHONE_PEPPER ?? "dev-pepper-change-in-production";
+const pepper = process.env.PHONE_PEPPER;
+
+if (!pepper && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "PHONE_PEPPER environment variable is required in production but was not provided.",
+  );
+}
+
+const PHONE_PEPPER = pepper ?? "dev-only-not-for-production";
 
 export function hashPhone(phone: string): string {
   return createHmac("sha256", PHONE_PEPPER)
