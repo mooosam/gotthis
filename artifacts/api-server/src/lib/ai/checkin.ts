@@ -2,11 +2,15 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   buildSystemPrompt,
-  buildContextBlock,
+  buildStaticContextBlock,
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
+import { loadFreshBudget } from "./usage.js";
 import type { MessageIntent } from "./classifier.js";
+
+export const OFF_TOPIC_REPLY =
+  "I'm your goal coach — let's focus on your targets.";
 
 export interface CheckInResult {
   response: string;
@@ -20,28 +24,33 @@ export async function runCheckIn(
   userMessage: string,
   intent: MessageIntent,
 ): Promise<CheckInResult> {
+  if (intent === "off_topic") {
+    return {
+      response: OFF_TOPIC_REPLY,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheHitTokens: 0,
+    };
+  }
+
+  const { budget } = await loadFreshBudget(ctx.user.id);
+  if (!budget.allowed) {
+    return {
+      response: budget.reason ?? "Daily message limit reached.",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheHitTokens: 0,
+    };
+  }
+
   const systemPrompt = buildSystemPrompt();
-  const contextBlock = buildContextBlock(ctx);
+  const staticContextBlock = buildStaticContextBlock(ctx);
   const recentLogsBlock = buildRecentLogsBlock(ctx);
 
-  const systemMessages: Anthropic.TextBlockParam[] = [
-    {
-      type: "text",
-      text: systemPrompt,
-      cache_control: { type: "ephemeral" },
-    } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-  ];
-
-  const userContextContent = `${contextBlock}\n\n${recentLogsBlock}`;
-
   let instructionSuffix: string;
-
   if (intent === "goal_update") {
     instructionSuffix =
-      "The user appears to be sharing a goal update or progress report. Acknowledge what they accomplished specifically, ask one focused follow-up question if needed, and encourage their next step. Keep your response to 3 sentences.";
-  } else if (intent === "off_topic") {
-    instructionSuffix =
-      "The user's message is not directly about their goals or daily ritual. Politely redirect them back to their goals with a brief comment. Keep your response to 1-2 sentences.";
+      "The user is sharing a goal update or progress report. Acknowledge what they accomplished specifically, ask one focused follow-up question if needed, and encourage the next step. Keep your response to 3 sentences.";
   } else {
     instructionSuffix =
       "The user is checking in mid-day. Respond helpfully and briefly in the context of their goals. Keep your response to 3-4 sentences.";
@@ -53,9 +62,13 @@ export async function runCheckIn(
       content: [
         {
           type: "text",
-          text: userContextContent,
+          text: staticContextBlock,
           cache_control: { type: "ephemeral" },
         } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
+        {
+          type: "text",
+          text: recentLogsBlock,
+        },
         {
           type: "text",
           text: `User message: "${userMessage}"\n\n${instructionSuffix}`,
@@ -67,17 +80,24 @@ export async function runCheckIn(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
-    system: systemMessages,
+    system: [
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
+    ],
     messages,
   });
 
   const responseText =
     response.content[0]?.type === "text" ? response.content[0].text : "";
 
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
-  const cacheHitTokens =
-    (response.usage as Record<string, number>).cache_read_input_tokens ?? 0;
-
-  return { response: responseText, inputTokens, outputTokens, cacheHitTokens };
+  return {
+    response: responseText,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheHitTokens:
+      (response.usage as Record<string, number>).cache_read_input_tokens ?? 0,
+  };
 }

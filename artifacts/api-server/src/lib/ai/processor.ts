@@ -1,9 +1,9 @@
 import { assembleContext } from "./context.js";
-import { checkUsageBudget, recordUsage } from "./usage.js";
-import { classifyIntent } from "./classifier.js";
+import { checkBudgetForUser, recordUsage, loadFreshBudget } from "./usage.js";
+import { classifyIntentWithFallback } from "./classifier.js";
 import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
-import { runCheckIn } from "./checkin.js";
+import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
 
 export interface ProcessMessageResult {
   reply: string;
@@ -18,17 +18,26 @@ export async function processMessage(
 ): Promise<ProcessMessageResult> {
   const ctx = await assembleContext(userId);
 
-  const budget = await checkUsageBudget(ctx.user);
-  if (!budget.allowed) {
+  const initialBudget = checkBudgetForUser(ctx.user);
+  if (!initialBudget.allowed) {
     return {
-      reply: budget.reason ?? "You have reached your usage limit.",
+      reply: initialBudget.reason ?? "You have reached your usage limit.",
       intent: "budget_exceeded",
-      dailyRemaining: budget.dailyRemaining,
-      monthlyTokenRemaining: budget.monthlyTokenRemaining,
+      dailyRemaining: initialBudget.dailyRemaining,
+      monthlyTokenRemaining: initialBudget.monthlyTokenRemaining,
     };
   }
 
-  const intent = classifyIntent(message);
+  const intent = await classifyIntentWithFallback(message);
+
+  if (intent === "off_topic") {
+    return {
+      reply: OFF_TOPIC_REPLY,
+      intent: "off_topic",
+      dailyRemaining: initialBudget.dailyRemaining,
+      monthlyTokenRemaining: initialBudget.monthlyTokenRemaining,
+    };
+  }
 
   let reply: string;
   let inputTokens = 0;
@@ -55,17 +64,16 @@ export async function processMessage(
     cacheHitTokens = result.cacheHitTokens;
   }
 
-  await recordUsage(userId, inputTokens, outputTokens, cacheHitTokens);
+  if (inputTokens > 0 || outputTokens > 0) {
+    await recordUsage(userId, inputTokens, outputTokens, cacheHitTokens);
+  }
 
-  const updatedBudget = await checkUsageBudget(ctx.user);
+  const { budget: freshBudget } = await loadFreshBudget(userId);
 
   return {
     reply,
     intent,
-    dailyRemaining: Math.max(0, updatedBudget.dailyRemaining - 1),
-    monthlyTokenRemaining: Math.max(
-      0,
-      updatedBudget.monthlyTokenRemaining - inputTokens - outputTokens,
-    ),
+    dailyRemaining: freshBudget.dailyRemaining,
+    monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
   };
 }

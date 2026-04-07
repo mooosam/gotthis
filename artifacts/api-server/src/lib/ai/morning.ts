@@ -1,37 +1,92 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { db, magicLinksTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import {
   buildSystemPrompt,
-  buildContextBlock,
+  buildStaticContextBlock,
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
+import { loadFreshBudget } from "./usage.js";
 
 export interface MorningRitualResult {
   response: string;
   inputTokens: number;
   outputTokens: number;
   cacheHitTokens: number;
-  todayLogData: Record<string, unknown>;
+}
+
+async function createMagicLink(userId: string, targetDate: string): Promise<string> {
+  const token = nanoid(32);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await db.insert(magicLinksTable).values({
+    id: nanoid(),
+    userId,
+    token,
+    targetDate,
+    targetGoalId: null,
+    expiresAt,
+  });
+
+  const baseUrl = process.env.REPLIT_DOMAINS
+    ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+    : "http://localhost:80";
+
+  return `${baseUrl}/review/${targetDate}?token=${token}`;
+}
+
+function getYesterdayDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
 }
 
 export async function runMorningRitual(
   ctx: UserContext,
   userMessage: string,
 ): Promise<MorningRitualResult> {
+  const { budget } = await loadFreshBudget(ctx.user.id);
+  if (!budget.allowed) {
+    return {
+      response: budget.reason ?? "Daily message limit reached.",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheHitTokens: 0,
+    };
+  }
+
+  const yesterday = getYesterdayDate();
+  const yesterdayLog = ctx.recentLogs.find((l) => l.logDate === yesterday);
+  const magicLinkUrl = await createMagicLink(ctx.user.id, yesterday);
+
   const systemPrompt = buildSystemPrompt();
-  const contextBlock = buildContextBlock(ctx);
+  const staticContextBlock = buildStaticContextBlock(ctx);
   const recentLogsBlock = buildRecentLogsBlock(ctx);
 
-  const systemMessages: Anthropic.MessageParam["content"] = [
-    {
-      type: "text",
-      text: systemPrompt,
-      cache_control: { type: "ephemeral" },
-    } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-  ];
+  const yesterdayHighlight = yesterdayLog?.narrative
+    ? `Yesterday's summary: ${yesterdayLog.narrative}`
+    : "No log found for yesterday.";
 
-  const userContextContent = `${contextBlock}\n\n${recentLogsBlock}`;
+  const streakLines = ctx.goals
+    .filter((g) => g.currentStreak > 0)
+    .map((g) => `${g.title}: ${g.currentStreak}-day streak`)
+    .join(", ");
+
+  const prompt = `Morning ritual triggered. User message: "${userMessage}"
+
+${yesterdayHighlight}
+${streakLines ? `Active streaks: ${streakLines}` : "No active streaks."}
+
+Write a morning coaching message with exactly 2-4 sentences:
+1. One sentence summarising yesterday's highlights (use the data above; if no log, note the fresh start).
+2. One sentence on streaks (if any active ones, call them out specifically).
+3. One sentence naming the single most important goal focus for today.
+4. End with this exact line: "See yesterday's full review here: ${magicLinkUrl}"
+
+Plain text only. No emojis. No markdown. Keep it under 80 words before the link line.`;
 
   const messages: Anthropic.MessageParam[] = [
     {
@@ -39,12 +94,16 @@ export async function runMorningRitual(
       content: [
         {
           type: "text",
-          text: userContextContent,
+          text: staticContextBlock,
           cache_control: { type: "ephemeral" },
         } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
         {
           type: "text",
-          text: `It is morning. The user is starting their morning ritual. Their message: "${userMessage}"\n\nRespond as a morning ritual coach. Briefly acknowledge their start, then guide them to set one or two specific intentions for today based on their active goals. Keep your response concise and actionable — no more than 3-4 sentences.`,
+          text: recentLogsBlock,
+        },
+        {
+          type: "text",
+          text: prompt,
         },
       ],
     },
@@ -53,29 +112,24 @@ export async function runMorningRitual(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
-    system: systemMessages as Anthropic.TextBlockParam[],
+    system: [
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
+    ],
     messages,
   });
 
   const responseText =
     response.content[0]?.type === "text" ? response.content[0].text : "";
 
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
-  const cacheHitTokens =
-    (response.usage as Record<string, number>).cache_read_input_tokens ?? 0;
-
-  const todayLogData: Record<string, unknown> = {
-    morningIntention: responseText,
-    morningMessage: userMessage,
-    morningTimestamp: new Date().toISOString(),
-  };
-
   return {
     response: responseText,
-    inputTokens,
-    outputTokens,
-    cacheHitTokens,
-    todayLogData,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheHitTokens:
+      (response.usage as Record<string, number>).cache_read_input_tokens ?? 0,
   };
 }

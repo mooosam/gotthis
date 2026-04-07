@@ -5,44 +5,109 @@ import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   buildSystemPrompt,
-  buildContextBlock,
+  buildStaticContextBlock,
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
-import { getTodayDate } from "./usage.js";
+import { getTodayDate, loadFreshBudget } from "./usage.js";
+import { refreshMemorySummary } from "./memory.js";
+
+export interface GoalCompletion {
+  goalId: string;
+  goalTitle: string;
+  percentProgress: number;
+  status: "completed" | "partial" | "skipped" | "not_started";
+  note: string;
+  blocker: string | null;
+}
+
+export interface EveningLogData {
+  date: string;
+  goalUpdates: GoalCompletion[];
+  wins: string[];
+  blockers: string[];
+  overallMood: "positive" | "neutral" | "negative";
+  eveningMessage: string;
+  eveningTimestamp: string;
+}
 
 export interface EveningRitualResult {
   response: string;
   inputTokens: number;
   outputTokens: number;
   cacheHitTokens: number;
-  narrative: string;
-}
-
-function extractGoalUpdates(
-  responseText: string,
-  goals: UserContext["goals"],
-): Array<{ goalId: string; note: string }> {
-  const updates: Array<{ goalId: string; note: string }> = [];
-  for (const goal of goals) {
-    const titleLower = goal.title.toLowerCase();
-    const responseLower = responseText.toLowerCase();
-    if (responseLower.includes(titleLower)) {
-      updates.push({ goalId: goal.id, note: "Mentioned in evening ritual" });
-    }
-  }
-  return updates;
 }
 
 export async function runEveningRitual(
   ctx: UserContext,
   userMessage: string,
 ): Promise<EveningRitualResult> {
-  const systemPrompt = buildSystemPrompt();
-  const contextBlock = buildContextBlock(ctx);
-  const recentLogsBlock = buildRecentLogsBlock(ctx);
+  const { budget } = await loadFreshBudget(ctx.user.id);
+  if (!budget.allowed) {
+    return {
+      response: budget.reason ?? "Daily message limit reached.",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheHitTokens: 0,
+    };
+  }
 
-  const systemMessages: Anthropic.TextBlockParam[] = [
+  const systemPrompt = buildSystemPrompt();
+  const staticContextBlock = buildStaticContextBlock(ctx);
+  const recentLogsBlock = buildRecentLogsBlock(ctx);
+  const today = getTodayDate();
+
+  const goalListText = ctx.goals
+    .map((g) => `[${g.id}] ${g.title} (current progress: ${g.progress}%)`)
+    .join("\n");
+
+  const extractionPrompt = `Evening ritual triggered. User message: "${userMessage}"
+
+Goals to extract status for:
+${goalListText || "No active goals."}
+
+Extract structured completion data from the user's message. Respond with ONLY a JSON object (no markdown, no explanation) in this exact shape:
+{
+  "goalUpdates": [
+    {
+      "goalId": "goal-id-string",
+      "goalTitle": "goal title",
+      "percentProgress": 0,
+      "status": "completed|partial|skipped|not_started",
+      "note": "what the user said about this goal",
+      "blocker": null
+    }
+  ],
+  "wins": ["specific things accomplished today"],
+  "blockers": ["things that got in the way"],
+  "overallMood": "positive|neutral|negative",
+  "narrative": "2-3 sentence third-person summary of today"
+}
+
+If the user did not mention a goal, omit it from goalUpdates. Set percentProgress based on what they described — do not change it if they gave no indication.`;
+
+  const extractionMessages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: staticContextBlock,
+          cache_control: { type: "ephemeral" },
+        } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
+        {
+          type: "text",
+          text: recentLogsBlock,
+        },
+        {
+          type: "text",
+          text: extractionPrompt,
+        },
+      ],
+    },
+  ];
+
+  const systemBlocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
       text: systemPrompt,
@@ -50,82 +115,43 @@ export async function runEveningRitual(
     } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
   ];
 
-  const userContextContent = `${contextBlock}\n\n${recentLogsBlock}`;
-
-  const messages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: userContextContent,
-          cache_control: { type: "ephemeral" },
-        } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-        {
-          type: "text",
-          text: `It is evening. The user is completing their evening reflection ritual. Their message: "${userMessage}"\n\nRespond as an evening ritual coach. Guide them through a brief reflection: what they accomplished, what they did not, and one specific intention for tomorrow. Ask about progress on their active goals if they have not mentioned it. Keep your response concise — 4-5 sentences maximum.`,
-        },
-      ],
-    },
-  ];
-
-  const reflectionResponse = await anthropic.messages.create({
+  const extractionResponse = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
-    system: systemMessages,
-    messages,
+    system: systemBlocks,
+    messages: extractionMessages,
   });
 
-  const reflectionText =
-    reflectionResponse.content[0]?.type === "text"
-      ? reflectionResponse.content[0].text
-      : "";
+  const extractedText =
+    extractionResponse.content[0]?.type === "text"
+      ? extractionResponse.content[0].text.trim()
+      : "{}";
 
-  const narrativeMessages: Anthropic.MessageParam[] = [
-    ...messages,
-    { role: "assistant", content: reflectionText },
-    {
-      role: "user",
-      content:
-        "Based on this evening reflection, write a single concise paragraph (2-3 sentences) that could serve as a narrative summary of today. Write it in third person. Focus on what was accomplished or attempted, and the tone of the day.",
-    },
-  ];
+  let extractedData: {
+    goalUpdates?: GoalCompletion[];
+    wins?: string[];
+    blockers?: string[];
+    overallMood?: "positive" | "neutral" | "negative";
+    narrative?: string;
+  } = {};
 
-  const narrativeResponse = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    system: systemMessages,
-    messages: narrativeMessages,
-  });
+  try {
+    extractedData = JSON.parse(extractedText);
+  } catch {
+    extractedData = {};
+  }
 
-  const narrativeText =
-    narrativeResponse.content[0]?.type === "text"
-      ? narrativeResponse.content[0].text
-      : "";
-
-  const inputTokens =
-    reflectionResponse.usage.input_tokens +
-    narrativeResponse.usage.input_tokens;
-  const outputTokens =
-    reflectionResponse.usage.output_tokens +
-    narrativeResponse.usage.output_tokens;
-  const cacheHitTokens =
-    ((reflectionResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0) +
-    ((narrativeResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0);
-
-  const today = getTodayDate();
-
-  const goalUpdates = extractGoalUpdates(
-    userMessage + " " + reflectionText,
-    ctx.goals,
-  );
-
-  const logData: Record<string, unknown> = {
-    eveningReflection: reflectionText,
+  const logData: EveningLogData = {
+    date: today,
+    goalUpdates: extractedData.goalUpdates ?? [],
+    wins: extractedData.wins ?? [],
+    blockers: extractedData.blockers ?? [],
+    overallMood: extractedData.overallMood ?? "neutral",
     eveningMessage: userMessage,
     eveningTimestamp: new Date().toISOString(),
-    goalMentions: goalUpdates,
   };
+
+  const narrative = extractedData.narrative ?? "";
 
   const [existingLog] = await db
     .select()
@@ -138,14 +164,10 @@ export async function runEveningRitual(
     );
 
   if (existingLog) {
-    const existingData =
-      (existingLog.data as Record<string, unknown> | null) ?? {};
+    const existingData = (existingLog.data as Record<string, unknown> | null) ?? {};
     await db
       .update(dailyLogsTable)
-      .set({
-        data: { ...existingData, ...logData },
-        narrative: narrativeText,
-      })
+      .set({ data: { ...existingData, ...logData }, narrative })
       .where(eq(dailyLogsTable.id, existingLog.id));
   } else {
     await db.insert(dailyLogsTable).values({
@@ -153,22 +175,93 @@ export async function runEveningRitual(
       userId: ctx.user.id,
       logDate: today,
       data: logData,
-      narrative: narrativeText,
+      narrative,
     });
   }
 
-  for (const goal of ctx.goals) {
+  for (const goalUpdate of logData.goalUpdates) {
     await db
       .update(goalsTable)
       .set({ lastCheckedAt: new Date() })
-      .where(eq(goalsTable.id, goal.id));
+      .where(and(eq(goalsTable.id, goalUpdate.goalId), eq(goalsTable.userId, ctx.user.id)));
+  }
+
+  const { budget: budget2 } = await loadFreshBudget(ctx.user.id);
+  if (!budget2.allowed) {
+    return {
+      response: "Daily log saved. " + (budget2.reason ?? "Message limit reached for follow-up."),
+      inputTokens: extractionResponse.usage.input_tokens,
+      outputTokens: extractionResponse.usage.output_tokens,
+      cacheHitTokens:
+        (extractionResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0,
+    };
+  }
+
+  const winsText = logData.wins.length > 0 ? `Wins: ${logData.wins.join("; ")}` : "No wins logged.";
+  const blockersText = logData.blockers.length > 0 ? `Blockers: ${logData.blockers.join("; ")}` : "";
+  const goalSummary = logData.goalUpdates.length > 0
+    ? logData.goalUpdates
+        .map((u) => `${u.goalTitle}: ${u.status} (${u.percentProgress}%)`)
+        .join(", ")
+    : "No goals updated.";
+
+  const coachingPrompt = `Evening ritual data extracted successfully:
+${winsText}
+${blockersText}
+Goal summary: ${goalSummary}
+
+Write a coaching response (2-4 sentences) that:
+1. Acknowledges what they accomplished specifically.
+2. Names one thing to carry into tomorrow.
+3. Closes with something grounded and honest.
+
+Plain text only. No emojis. No markdown.`;
+
+  const coachingMessages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: staticContextBlock,
+          cache_control: { type: "ephemeral" },
+        } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
+        {
+          type: "text",
+          text: coachingPrompt,
+        },
+      ],
+    },
+  ];
+
+  const coachingResponse = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    system: systemBlocks,
+    messages: coachingMessages,
+  });
+
+  const coachingText =
+    coachingResponse.content[0]?.type === "text"
+      ? coachingResponse.content[0].text
+      : "";
+
+  try {
+    await refreshMemorySummary(ctx.user.id);
+  } catch {
+    // Non-fatal: memory refresh failure should not break the response
   }
 
   return {
-    response: reflectionText,
-    inputTokens,
-    outputTokens,
-    cacheHitTokens,
-    narrative: narrativeText,
+    response: coachingText,
+    inputTokens:
+      extractionResponse.usage.input_tokens +
+      coachingResponse.usage.input_tokens,
+    outputTokens:
+      extractionResponse.usage.output_tokens +
+      coachingResponse.usage.output_tokens,
+    cacheHitTokens:
+      ((extractionResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0) +
+      ((coachingResponse.usage as Record<string, number>).cache_read_input_tokens ?? 0),
   };
 }

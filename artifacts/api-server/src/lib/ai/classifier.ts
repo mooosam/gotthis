@@ -1,3 +1,5 @@
+import { anthropic } from "@workspace/integrations-anthropic-ai";
+
 export type MessageIntent =
   | "morning_ritual"
   | "evening_ritual"
@@ -13,7 +15,7 @@ const MORNING_PATTERNS = [
   /\bwoke up\b/i,
   /\bjust woke\b/i,
   /\bmorning check\b/i,
-  /\bready for the day\b/i,
+  /\bready for.*day\b/i,
 ];
 
 const EVENING_PATTERNS = [
@@ -27,8 +29,11 @@ const EVENING_PATTERNS = [
   /\bgoing to bed\b/i,
   /\bbefore.*sleep\b/i,
   /\bday.*done\b/i,
+  /\bthat'?s it for today\b/i,
   /\bfinished.*day\b/i,
   /\breflect.*day\b/i,
+  /\ball done.*today\b/i,
+  /\bday is over\b/i,
 ];
 
 const GOAL_UPDATE_PATTERNS = [
@@ -39,7 +44,7 @@ const GOAL_UPDATE_PATTERNS = [
   /\bmade progress\b/i,
   /\bupdate.*goal\b/i,
   /\bgoal.*update\b/i,
-  /\b\d+%\b/i,
+  /\b\d+\s*%\b/i,
   /\bpercent\b/i,
 ];
 
@@ -49,24 +54,87 @@ const OFF_TOPIC_PATTERNS = [
   /\blatest news\b/i,
   /\bwrite.*code\b/i,
   /\bhelp me.*code\b/i,
+  /\bjoke\b/i,
+  /\brecipe\b/i,
+  /\btranslate\b/i,
 ];
 
-export function classifyIntent(message: string): MessageIntent {
+function isAmbiguous(message: string): boolean {
+  const text = message.toLowerCase();
+  const hasGoalKeyword = GOAL_UPDATE_PATTERNS.some((p) => p.test(text));
+  const hasMorningKeyword = MORNING_PATTERNS.some((p) => p.test(text));
+  const hasEveningKeyword = EVENING_PATTERNS.some((p) => p.test(text));
+  const hasOffTopicKeyword = OFF_TOPIC_PATTERNS.some((p) => p.test(text));
+
+  if (hasMorningKeyword || hasEveningKeyword || hasGoalKeyword || hasOffTopicKeyword) {
+    return false;
+  }
+  return message.trim().length > 30;
+}
+
+export function classifyIntentKeywords(message: string): MessageIntent {
   for (const pattern of MORNING_PATTERNS) {
     if (pattern.test(message)) return "morning_ritual";
   }
-
   for (const pattern of EVENING_PATTERNS) {
     if (pattern.test(message)) return "evening_ritual";
   }
-
   for (const pattern of OFF_TOPIC_PATTERNS) {
     if (pattern.test(message)) return "off_topic";
   }
-
   for (const pattern of GOAL_UPDATE_PATTERNS) {
     if (pattern.test(message)) return "goal_update";
   }
-
   return "check_in";
+}
+
+export async function classifyIntentWithFallback(
+  message: string,
+): Promise<MessageIntent> {
+  const keywordResult = classifyIntentKeywords(message);
+
+  if (keywordResult !== "check_in" || !isAmbiguous(message)) {
+    return keywordResult;
+  }
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: `Classify this message from a goal coaching app user into exactly one category. Reply with only the category name and nothing else.
+
+Categories:
+- morning_ritual: user is starting their day or doing a morning check-in
+- evening_ritual: user is ending their day or doing an evening reflection
+- goal_update: user is reporting progress on a goal
+- check_in: general goal-related question or mid-day message
+- off_topic: message has nothing to do with goals or daily rituals
+
+Message: "${message}"
+
+Category:`,
+        },
+      ],
+    });
+
+    const raw =
+      response.content[0]?.type === "text"
+        ? response.content[0].text.trim().toLowerCase()
+        : "check_in";
+
+    const valid: MessageIntent[] = [
+      "morning_ritual",
+      "evening_ritual",
+      "goal_update",
+      "check_in",
+      "off_topic",
+    ];
+    const matched = valid.find((v) => raw.includes(v));
+    return matched ?? "check_in";
+  } catch {
+    return "check_in";
+  }
 }

@@ -14,12 +14,10 @@ export function getTodayDate(): string {
   return new Date().toISOString().split("T")[0];
 }
 
-export async function checkUsageBudget(user: User): Promise<UsageBudgetCheck> {
-  const now = new Date();
+export function checkBudgetForUser(user: User): UsageBudgetCheck {
   const today = getTodayDate();
 
   let dailyCount = user.dailyMessageCount;
-
   if (
     !user.dailyMessageResetAt ||
     user.dailyMessageResetAt.toISOString().split("T")[0] < today
@@ -32,15 +30,14 @@ export async function checkUsageBudget(user: User): Promise<UsageBudgetCheck> {
   if (dailyRemaining === 0) {
     return {
       allowed: false,
-      reason: `Daily message limit of ${user.dailyMessageCap} reached. Your limit resets at midnight in your timezone.`,
+      reason: `Daily message limit of ${user.dailyMessageCap} reached. Your limit resets at midnight.`,
       dailyRemaining: 0,
       monthlyTokenRemaining: Math.max(0, user.monthlyTokenAllowance - user.monthlyTokenCount),
     };
   }
 
-  let monthlyTokenCount = user.monthlyTokenCount;
   const thisMonth = today.substring(0, 7);
-
+  let monthlyTokenCount = user.monthlyTokenCount;
   if (
     !user.monthlyTokenResetAt ||
     user.monthlyTokenResetAt.toISOString().substring(0, 7) < thisMonth
@@ -53,13 +50,26 @@ export async function checkUsageBudget(user: User): Promise<UsageBudgetCheck> {
   if (monthlyTokenRemaining < 500) {
     return {
       allowed: false,
-      reason: `Monthly token allowance nearly exhausted. Upgrade your plan to continue.`,
+      reason: `Monthly token allowance exhausted. Upgrade your plan to continue.`,
       dailyRemaining,
       monthlyTokenRemaining,
     };
   }
 
   return { allowed: true, dailyRemaining, monthlyTokenRemaining };
+}
+
+export async function checkUsageBudget(user: User): Promise<UsageBudgetCheck> {
+  return checkBudgetForUser(user);
+}
+
+export async function loadFreshBudget(userId: string): Promise<{ user: User; budget: UsageBudgetCheck }> {
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+  if (!user) throw new Error(`User ${userId} not found`);
+  return { user, budget: checkBudgetForUser(user) };
 }
 
 export async function recordUsage(
@@ -108,7 +118,6 @@ export async function recordUsage(
     .select()
     .from(usersTable)
     .where(eq(usersTable.id, userId));
-
   if (!user) return;
 
   const dailyCountNeedsReset =
