@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon } from "lucide-react";
@@ -109,19 +109,24 @@ export default function GoalDetailPage({ id }: { id: string }) {
   });
 
   // Update form values when goal data loads
-  useState(() => {
+  useEffect(() => {
     if (goal) {
+      const status = (["active", "completed", "paused"] as const).includes(
+        goal.status as "active" | "completed" | "paused"
+      )
+        ? (goal.status as "active" | "completed" | "paused")
+        : "active";
       form.reset({
         title: goal.title,
         description: goal.description || "",
         category: goal.category,
-        deadline: goal.deadline ? new Date(goal.deadline).toISOString().split('T')[0] : "",
+        deadline: goal.deadline ? new Date(goal.deadline).toISOString().split("T")[0] : "",
         successCriteria: goal.successCriteria || "",
-        status: goal.status as any,
+        status,
       });
       setProgressValue([goal.progress]);
     }
-  });
+  }, [goal, form]);
 
   const onEditSubmit = async (data: EditGoalValues) => {
     try {
@@ -250,13 +255,18 @@ export default function GoalDetailPage({ id }: { id: string }) {
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" onClick={() => {
+                  const status = (["active", "completed", "paused"] as const).includes(
+                    goal.status as "active" | "completed" | "paused"
+                  )
+                    ? (goal.status as "active" | "completed" | "paused")
+                    : "active";
                   form.reset({
                     title: goal.title,
                     description: goal.description || "",
                     category: goal.category,
-                    deadline: goal.deadline ? new Date(goal.deadline).toISOString().split('T')[0] : "",
+                    deadline: goal.deadline ? new Date(goal.deadline).toISOString().split("T")[0] : "",
                     successCriteria: goal.successCriteria || "",
-                    status: goal.status as any,
+                    status,
                   });
                 }}>
                   <Edit className="mr-2 h-4 w-4" /> Edit

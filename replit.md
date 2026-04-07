@@ -38,10 +38,14 @@ The Ritual AI is a goal coaching app where:
 ## Database Tables
 
 - `users` — Clerk ID, email, phone (WhatsApp), IANA timezone, subscription tier, usage counters
-- `goals` — userId, title, category, deadline, status, progress, streaks
+- `goals` — userId, title, category, deadline (text, YYYY-MM-DD), status, progress, streaks, lastCheckedAt
 - `daily_logs` — userId, logDate, JSONB data, AI narrative
 - `memory_summaries` — userId, JSONB rolling AI summary
 - `magic_links` — token, userId, targetDate, targetGoalId, expiresAt
+
+### DB Schema Notes
+- `goals.deadline` is stored as `text` (not `date`) for compatibility with existing data
+- `goals.lastCheckedAt` is nullable timestamp added in sync with schema
 
 ## API Endpoints
 

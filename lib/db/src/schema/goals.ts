@@ -3,7 +3,6 @@ import {
   text,
   integer,
   timestamp,
-  date,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -14,7 +13,7 @@ export const goalsTable = pgTable("goals", {
   title: text("title").notNull(),
   description: text("description"),
   category: text("category").notNull().default("general"),
-  deadline: date("deadline"),
+  deadline: text("deadline"),
   status: text("status").notNull().default("active"),
   progress: integer("progress").notNull().default(0),
   successCriteria: text("success_criteria"),
