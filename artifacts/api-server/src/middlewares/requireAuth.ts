@@ -21,9 +21,11 @@ export async function requireAuth(
     .where(eq(usersTable.id, clerkId));
 
   if (!user) {
+    const claims = auth.sessionClaims ?? {};
     const email =
-      (auth.sessionClaims?.email as string) ??
-      (auth.sessionClaims?.primaryEmail as string) ??
+      (claims["email"] as string | undefined) ??
+      (claims["primaryEmail"] as string | undefined) ??
+      (claims["emailAddress"] as string | undefined) ??
       "";
     [user] = await db
       .insert(usersTable)
@@ -34,7 +36,15 @@ export async function requireAuth(
         dailyMessageCap: 5,
         monthlyTokenAllowance: 50000,
       })
+      .onConflictDoNothing()
       .returning();
+
+    if (!user) {
+      [user] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, clerkId));
+    }
   }
 
   (req as Request & { userId: string; user: typeof user }).userId = user.id;

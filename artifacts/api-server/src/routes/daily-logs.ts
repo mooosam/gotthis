@@ -47,16 +47,26 @@ router.post("/daily-logs", requireAuth, async (req, res): Promise<void> => {
 
   const { logDate, data, narrative } = parsed.data;
 
-  const [log] = await db
-    .insert(dailyLogsTable)
-    .values({
-      id: nanoid(),
-      userId,
-      logDate,
-      data: data ?? null,
-      narrative: narrative ?? null,
-    })
-    .returning();
+  let log;
+  try {
+    [log] = await db
+      .insert(dailyLogsTable)
+      .values({
+        id: nanoid(),
+        userId,
+        logDate,
+        data: data ?? null,
+        narrative: narrative ?? null,
+      })
+      .returning();
+  } catch (err: unknown) {
+    const pg = err as { code?: string };
+    if (pg.code === "23505") {
+      res.status(409).json({ error: "A log for this date already exists" });
+      return;
+    }
+    throw err;
+  }
 
   res.status(201).json(log);
 });
