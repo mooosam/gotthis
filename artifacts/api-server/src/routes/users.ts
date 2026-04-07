@@ -37,6 +37,11 @@ router.put("/users/me", requireAuth, async (req, res): Promise<void> => {
   if (phone !== undefined) updates.phoneHash = hashPhone(phone);
   if (newsletterCadence !== undefined) updates.newsletterCadence = newsletterCadence;
 
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No fields to update" });
+    return;
+  }
+
   const [updated] = await db
     .update(usersTable)
     .set(updates)
