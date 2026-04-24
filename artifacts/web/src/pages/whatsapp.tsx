@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Smartphone, CheckCircle2, RefreshCw, Unlink, Loader2, Hash } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 import { AppLayout } from "@/components/layout/app-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +34,7 @@ export default function WhatsAppPage() {
 
   const fetchQR = useCallback(async () => {
     try {
-      const res = await fetch("/api/whatsapp/qr");
+      const res = await apiFetch("/api/whatsapp/qr");
       if (res.status === 403) {
         setIsAdmin(false);
         setIsLoading(false);
@@ -79,7 +80,7 @@ export default function WhatsAppPage() {
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
     try {
-      const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
+      const res = await apiFetch("/api/whatsapp/disconnect", { method: "POST" });
       if (!res.ok) throw new Error();
       setStatus("connecting");
       setQrRaw(null);
@@ -98,7 +99,7 @@ export default function WhatsAppPage() {
     setIsRequestingCode(true);
     setPairingCode(null);
     try {
-      const res = await fetch("/api/whatsapp/pair", {
+      const res = await apiFetch("/api/whatsapp/pair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone.trim() }),

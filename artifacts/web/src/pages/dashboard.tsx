@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGetDashboardStats } from "@workspace/api-client-react";
+import { apiFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { format, subDays } from "date-fns";
 import { ArrowRight, Target, Flame, CheckCircle2, TrendingUp, Sparkles } from "lucide-react";
@@ -40,7 +41,7 @@ export default function DashboardPage() {
 
     setIsSending(true);
     try {
-      const response = await fetch("/api/ai/message", {
+      const response = await apiFetch("/api/ai/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: content }),
