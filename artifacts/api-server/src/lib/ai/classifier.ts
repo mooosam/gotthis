@@ -96,8 +96,11 @@ export interface ClassificationResult {
   outputTokens: number;
 }
 
+const MIN_TOKENS_FOR_CLAUDE_FALLBACK = 500;
+
 export async function classifyIntentWithFallback(
   message: string,
+  monthlyTokenRemaining?: number,
 ): Promise<ClassificationResult> {
   const trimmed = message.trim();
 
@@ -108,6 +111,10 @@ export async function classifyIntentWithFallback(
   const keywordResult = classifyIntentKeywords(message);
 
   if (keywordResult !== "check_in" || !isAmbiguous(message)) {
+    return { intent: keywordResult, inputTokens: 0, outputTokens: 0 };
+  }
+
+  if (monthlyTokenRemaining !== undefined && monthlyTokenRemaining < MIN_TOKENS_FOR_CLAUDE_FALLBACK) {
     return { intent: keywordResult, inputTokens: 0, outputTokens: 0 };
   }
 

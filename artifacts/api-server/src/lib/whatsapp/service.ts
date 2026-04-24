@@ -6,20 +6,13 @@ import makeWASocket, {
 import type { BaileysEventMap } from "@whiskeysockets/baileys";
 import path from "node:path";
 import fs from "node:fs";
-import { createHmac } from "node:crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { hashPhone } from "../phone.js";
 import { processMessage } from "../ai/processor.js";
 import { logger } from "../logger.js";
 
 const AUTH_DIR = path.resolve(process.cwd(), ".whatsapp-auth");
-const PHONE_PEPPER = process.env.PHONE_PEPPER ?? "dev-only-not-for-production";
-
-function hashPhone(raw: string): string {
-  return createHmac("sha256", PHONE_PEPPER)
-    .update(raw.trim().replace(/\s+/g, ""))
-    .digest("hex");
-}
 
 function jidToPhone(jid: string): string {
   return jid.split("@")[0];

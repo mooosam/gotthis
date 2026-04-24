@@ -28,7 +28,7 @@ export async function processMessage(
     };
   }
 
-  const classification = await classifyIntentWithFallback(message);
+  const classification = await classifyIntentWithFallback(message, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
 
   // If the classifier used Claude (AI fallback), apply those tokens to a provisional
