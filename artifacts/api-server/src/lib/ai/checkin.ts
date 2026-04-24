@@ -43,25 +43,21 @@ async function extractAndSaveGoalProgress(
 
   const extractionPrompt = `The user sent a goal progress update: "${userMessage}"
 
-Their active goals:
+Their active goals (use the EXACT goalId strings shown in brackets):
 ${goalListText}
 
-Extract which goal(s) they mentioned and estimate their updated progress percentage. Respond with ONLY a JSON array (no markdown):
-[
-  {
-    "goalId": "goal-id-string",
-    "goalTitle": "goal title",
-    "percentProgress": 10,
-    "note": "brief note of what they said"
-  }
-]
+IMPORTANT: Reply with ONLY a raw JSON array — no markdown, no code fences, no explanation. Start your response with [ and end with ].
+
+Format:
+[{"goalId":"EXACT_ID_FROM_ABOVE","goalTitle":"exact title","percentProgress":10,"note":"what they said"}]
 
 Rules:
+- Use the EXACT goalId string from the brackets above (copy it character-for-character).
 - Only include goals explicitly mentioned or clearly implied.
-- Set percentProgress based on what they described relative to their goal's success criteria.
-- If they said they "did 5 pushups" toward a "50 pushups daily" goal, that is 10% for today's task.
-- Do not decrease existing progress unless they say they failed.
-- If no goal is mentioned, return an empty array: []`;
+- percentProgress is a number 0-100 representing today's completion of that goal.
+- Example: "did 5 pushups" toward a "50 pushups per day" goal → percentProgress: 10
+- Do not decrease existing progress unless the user explicitly says they failed.
+- If no goal is clearly mentioned, return: []`;
 
   const systemBlocks: Anthropic.TextBlockParam[] = [
     {
@@ -90,24 +86,49 @@ Rules:
     ],
   });
 
-  const raw = response.content[0]?.type === "text" ? response.content[0].text.trim() : "[]";
+  const rawText = response.content[0]?.type === "text" ? response.content[0].text.trim() : "[]";
+
+  // Strip markdown code fences Claude sometimes adds despite instructions
+  const raw = rawText
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
 
   let updates: ExtractedGoalUpdate[] = [];
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) updates = parsed;
-  } catch {
+    else if (parsed && typeof parsed === "object") updates = [parsed];
+  } catch (err) {
+    // Log so we can see what Claude actually returned
+    console.warn("[goal-extract] JSON parse failed. Raw response:", rawText, "Error:", err);
     updates = [];
   }
 
+  console.info("[goal-extract] Extracted updates:", JSON.stringify(updates));
+
   const today = getTodayDate();
 
-  for (const update of updates) {
+  // Validate each extracted goalId against known goals to catch hallucinated IDs
+  const validGoalIds = new Set(ctx.goals.map((g) => g.id));
+  const validUpdates = updates.filter((u) => {
+    if (!validGoalIds.has(u.goalId)) {
+      console.warn("[goal-extract] Claude returned unknown goalId:", u.goalId, "— skipping");
+      return false;
+    }
+    return true;
+  });
+
+  for (const update of validUpdates) {
+    console.info("[goal-extract] Writing progress:", update.goalId, update.percentProgress + "%");
     await db
       .update(goalsTable)
       .set({ progress: update.percentProgress, lastCheckedAt: new Date() })
       .where(and(eq(goalsTable.id, update.goalId), eq(goalsTable.userId, ctx.user.id)));
   }
+
+  // Use validUpdates going forward
+  updates = validUpdates;
 
   if (updates.length > 0) {
     const [existingLog] = await db
