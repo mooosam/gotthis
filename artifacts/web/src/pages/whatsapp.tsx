@@ -17,6 +17,7 @@ interface QRResponse {
   status: WAStatus;
   qr?: string | null;
   pairingCode?: string | null;
+  connectedPhone?: string | null;
 }
 
 export default function WhatsAppPage() {
@@ -29,6 +30,7 @@ export default function WhatsAppPage() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [phone, setPhone] = useState("");
   const [isRequestingCode, setIsRequestingCode] = useState(false);
+  const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
 
   const qrRef = useRef<string | null>(null);
 
@@ -48,6 +50,7 @@ export default function WhatsAppPage() {
         setStatus("connected");
         setQrRaw(null);
         setPairingCode(null);
+        setConnectedPhone(data.connectedPhone ?? null);
         qrRef.current = null;
       } else {
         setStatus("connecting");
@@ -169,8 +172,21 @@ export default function WhatsAppPage() {
                 <div className="rounded-full bg-primary/10 p-6">
                   <CheckCircle2 className="h-12 w-12 text-primary" />
                 </div>
+                {connectedPhone && (
+                  <div className="w-full rounded-xl border border-primary/20 bg-primary/5 px-5 py-4 text-center space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Connected phone number
+                    </p>
+                    <p className="text-lg font-mono font-semibold text-foreground">
+                      +{connectedPhone}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Go to <strong>Account Settings</strong> and enter this exact number so the AI can recognise you.
+                    </p>
+                  </div>
+                )}
                 <p className="text-center text-sm text-muted-foreground leading-relaxed max-w-sm">
-                  WhatsApp is active. Send any message to your coaching number and the AI will respond.
+                  WhatsApp is active. Message your Saved Messages (tap your own name at the top of your chat list) and the AI will respond.
                 </p>
                 <Button
                   variant="outline"

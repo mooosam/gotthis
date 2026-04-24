@@ -26,6 +26,7 @@ export type WAStatus = "disconnected" | "connecting" | "open";
 let currentQR: string | null = null;
 let pairingCode: string | null = null;
 let currentStatus: WAStatus = "disconnected";
+let connectedPhone: string | null = null;
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPairingPhone: string | null = null;
@@ -44,6 +45,10 @@ export function getPairingCode(): string | null {
 
 export function getStatus(): WAStatus {
   return currentStatus;
+}
+
+export function getConnectedPhone(): string | null {
+  return connectedPhone;
 }
 
 async function findUserByPhone(phone: string, jid: string): Promise<User | null> {
@@ -179,6 +184,7 @@ async function connect(phoneForPairing?: string): Promise<void> {
       currentQR = null;
       pairingCode = null;
       pendingPairingPhone = null;
+      connectedPhone = null;
       const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
@@ -203,7 +209,10 @@ async function connect(phoneForPairing?: string): Promise<void> {
       currentQR = null;
       pairingCode = null;
       pendingPairingPhone = null;
-      logger.info("WhatsApp connected");
+      // Extract connected phone number from the socket user JID
+      const rawJid = sock?.user?.id ?? "";
+      connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
+      logger.info({ connectedPhone }, "WhatsApp connected");
     }
   });
 
@@ -224,9 +233,16 @@ async function connect(phoneForPairing?: string): Promise<void> {
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
 
-      // jid is already the phone-based JID (without device suffix) in all cases,
-      // including self-chat where remoteJid equals the user's own number.
-      const phone = jidToPhone(jid);
+      // When WhatsApp uses LID-based routing (newer clients), self-messages
+      // arrive with a LID JID (e.g. 225219595743478@lid) instead of the
+      // phone-based JID. For fromMe=true messages we use connectedPhone
+      // directly so the lookup still works.
+      let phone: string;
+      if (jid.endsWith("@lid") && msg.key.fromMe && connectedPhone) {
+        phone = connectedPhone;
+      } else {
+        phone = jidToPhone(jid);
+      }
 
       const text =
         msg.message.conversation ??
@@ -320,6 +336,7 @@ export async function requestPairingCode(phone: string): Promise<string> {
       currentQR = null;
       pairingCode = null;
       pendingPairingPhone = null;
+      connectedPhone = null;
       const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       const shouldReconnect = reason !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
@@ -335,7 +352,9 @@ export async function requestPairingCode(phone: string): Promise<string> {
       currentQR = null;
       pairingCode = null;
       pendingPairingPhone = null;
-      logger.info("WhatsApp connected via pairing code");
+      const rawJid = sock?.user?.id ?? "";
+      connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
+      logger.info({ connectedPhone }, "WhatsApp connected via pairing code");
     }
   });
 
@@ -353,7 +372,12 @@ export async function requestPairingCode(phone: string): Promise<string> {
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
 
-      const phone = jidToPhone(jid);
+      let phone: string;
+      if (jid.endsWith("@lid") && msg.key.fromMe && connectedPhone) {
+        phone = connectedPhone;
+      } else {
+        phone = jidToPhone(jid);
+      }
 
       const text = msg.message.conversation ?? msg.message.extendedTextMessage?.text ?? "";
       if (!text.trim()) continue;

@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
-import { getQR, getStatus, getPairingCode, disconnectWhatsApp, requestPairingCode } from "../lib/whatsapp/service.js";
+import { getQR, getStatus, getPairingCode, getConnectedPhone, disconnectWhatsApp, requestPairingCode } from "../lib/whatsapp/service.js";
 
 const router: IRouter = Router();
 
 router.get("/whatsapp/status", requireAuth, requireAdmin, (_req, res): void => {
-  res.json({ status: getStatus(), hasQR: getQR() !== null, hasPairingCode: getPairingCode() !== null });
+  res.json({ status: getStatus(), hasQR: getQR() !== null, hasPairingCode: getPairingCode() !== null, connectedPhone: getConnectedPhone() });
 });
 
 router.get("/whatsapp/qr", requireAuth, requireAdmin, (_req, res): void => {
@@ -18,7 +18,7 @@ router.get("/whatsapp/qr", requireAuth, requireAdmin, (_req, res): void => {
   const code = getPairingCode();
 
   if (status === "open") {
-    res.json({ status: "connected" });
+    res.json({ status: "connected", connectedPhone: getConnectedPhone() });
     return;
   }
 
