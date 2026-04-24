@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useGetDashboardStats } from "@workspace/api-client-react";
+import { useState, useCallback } from "react";
+import { useGetDashboardStats, useListGoals } from "@workspace/api-client-react";
 import { apiFetch } from "@/lib/api";
 import { Link } from "wouter";
 import { format, subDays } from "date-fns";
@@ -22,13 +22,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
-  const { data: stats, isLoading } = useGetDashboardStats();
+  const { data: stats, isLoading, refetch: refetchStats } = useGetDashboardStats();
+  const { refetch: refetchGoals } = useListGoals();
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [aiReply, setAiReply] = useState("");
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     const content = message.trim();
     if (!content) {
       toast({
@@ -52,15 +53,18 @@ export default function DashboardPage() {
         throw new Error(error?.error || "Failed to send update");
       }
 
-      const result = (await response.json()) as { reply?: string };
+      const result = (await response.json()) as { reply?: string; intent?: string };
       setAiReply(result.reply || "");
-      window.location.reload();
+      setMessage("");
+
+      await Promise.all([refetchStats(), refetchGoals()]);
 
       toast({
         title: "Update sent",
-        description: "The app has processed your message.",
+        description: result.intent === "goal_update"
+          ? "Your goal progress has been updated."
+          : "The AI has processed your message.",
       });
-      setMessage("");
     } catch {
       toast({
         title: "Could not send update",
@@ -70,7 +74,7 @@ export default function DashboardPage() {
     } finally {
       setIsSending(false);
     }
-  };
+  }, [message, toast, refetchStats, refetchGoals]);
 
   if (isLoading) {
     return (

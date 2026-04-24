@@ -46,6 +46,23 @@ const GOAL_UPDATE_PATTERNS = [
   /\bgoal.*update\b/i,
   /\b\d+\s*%\b/i,
   /\bpercent\b/i,
+  /\bi did\b/i,
+  /\bi ran\b/i,
+  /\bi walked\b/i,
+  /\bi ate\b/i,
+  /\bi read\b/i,
+  /\bi wrote\b/i,
+  /\bi practiced\b/i,
+  /\bi studied\b/i,
+  /\bi exercised\b/i,
+  /\bi trained\b/i,
+  /\bi spent\b/i,
+  /\bi managed\b/i,
+  /\btoday i\b/i,
+  /\bjust did\b/i,
+  /\bjust finished\b/i,
+  /\bjust completed\b/i,
+  /\b\d+\s*(pushup|push-up|pullup|pull-up|squat|rep|set|km|mile|minute|hour|page|chapter|word)\b/i,
 ];
 
 const OFF_TOPIC_PATTERNS = [
