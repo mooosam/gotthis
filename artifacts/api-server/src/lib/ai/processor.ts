@@ -31,6 +31,29 @@ export async function processMessage(
   const classification = await classifyIntentWithFallback(message);
   const { intent } = classification;
 
+  // If the classifier used Claude (AI fallback), apply those tokens to a provisional
+  // in-memory budget check before running the more expensive handler call.  This
+  // prevents a user who is at the edge of their monthly allowance from consuming a
+  // second model call after the classifier already pushed them over the limit.
+  if (classification.inputTokens > 0 || classification.outputTokens > 0) {
+    const provisionalUser = {
+      ...ctx.user,
+      monthlyTokenCount:
+        ctx.user.monthlyTokenCount + classification.inputTokens + classification.outputTokens,
+    };
+    const provisionalBudget = checkBudgetForUser(provisionalUser);
+    if (!provisionalBudget.allowed) {
+      // Persist classifier tokens so usage is accurately accounted for.
+      await recordUsage(userId, classification.inputTokens, classification.outputTokens, 0);
+      return {
+        reply: provisionalBudget.reason ?? "You have reached your usage limit.",
+        intent: "budget_exceeded",
+        dailyRemaining: provisionalBudget.dailyRemaining,
+        monthlyTokenRemaining: provisionalBudget.monthlyTokenRemaining,
+      };
+    }
+  }
+
   let totalInputTokens = classification.inputTokens;
   let totalOutputTokens = classification.outputTokens;
   let totalCacheHitTokens = 0;
@@ -59,8 +82,8 @@ export async function processMessage(
     totalCacheHitTokens += result.cacheHitTokens;
   }
 
-  // Always record usage for every processed request — this increments dailyMessageCount
-  // and updates usage_tracking, ensuring the daily cap is enforced even for 0-token paths.
+  // Record all accumulated usage (classifier + handler) in one write.  This also
+  // increments the daily message count exactly once per user-facing interaction.
   await recordUsage(userId, totalInputTokens, totalOutputTokens, totalCacheHitTokens);
 
   const { budget: freshBudget } = await loadFreshBudget(userId);

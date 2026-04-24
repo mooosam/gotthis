@@ -2,10 +2,8 @@ import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  makeInMemoryStore,
 } from "@whiskeysockets/baileys";
 import type { BaileysEventMap } from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
 import path from "node:path";
 import fs from "node:fs";
 import { createHmac } from "node:crypto";
@@ -91,7 +89,7 @@ async function connect(): Promise<void> {
     if (connection === "close") {
       currentStatus = "disconnected";
       currentQR = null;
-      const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
+      const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
       logger.warn({ reason }, "WhatsApp connection closed");
