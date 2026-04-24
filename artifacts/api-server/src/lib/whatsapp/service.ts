@@ -24,12 +24,18 @@ function jidToPhone(jid: string): string {
 export type WAStatus = "disconnected" | "connecting" | "open";
 
 let currentQR: string | null = null;
+let pairingCode: string | null = null;
 let currentStatus: WAStatus = "disconnected";
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPairingPhone: string | null = null;
 
 export function getQR(): string | null {
   return currentQR;
+}
+
+export function getPairingCode(): string | null {
+  return pairingCode;
 }
 
 export function getStatus(): WAStatus {
@@ -107,7 +113,7 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
   await sock?.sendMessage(jid, { text: reply });
 }
 
-async function connect(): Promise<void> {
+async function connect(phoneForPairing?: string): Promise<void> {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -122,11 +128,14 @@ async function connect(): Promise<void> {
 
   currentStatus = "connecting";
   currentQR = null;
+  pairingCode = null;
+
+  const usePairingCode = !!phoneForPairing;
 
   sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true,
+    printQRInTerminal: !usePairingCode,
     logger: logger.child({ module: "baileys" }) as Parameters<typeof makeWASocket>[0]["logger"],
     browser: ["The Ritual AI", "Chrome", "1.0.0"],
     syncFullHistory: false,
@@ -134,6 +143,20 @@ async function connect(): Promise<void> {
   });
 
   sock.ev.on("creds.update", saveCreds);
+
+  if (usePairingCode && phoneForPairing && !state.creds.registered) {
+    setTimeout(async () => {
+      try {
+        const normalised = phoneForPairing.replace(/\D/g, "");
+        const code = await sock!.requestPairingCode(normalised);
+        pairingCode = code;
+        pendingPairingPhone = phoneForPairing;
+        logger.info({ phone: normalised.slice(-4) + "****" }, "Pairing code generated");
+      } catch (err) {
+        logger.error({ err }, "Failed to request pairing code");
+      }
+    }, 3000);
+  }
 
   sock.ev.on("connection.update", async (update: BaileysEventMap["connection.update"]) => {
     const { connection, lastDisconnect, qr } = update;
@@ -147,6 +170,8 @@ async function connect(): Promise<void> {
     if (connection === "close") {
       currentStatus = "disconnected";
       currentQR = null;
+      pairingCode = null;
+      pendingPairingPhone = null;
       const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
@@ -165,6 +190,8 @@ async function connect(): Promise<void> {
     if (connection === "open") {
       currentStatus = "open";
       currentQR = null;
+      pairingCode = null;
+      pendingPairingPhone = null;
       logger.info("WhatsApp connected");
     }
   });
@@ -212,6 +239,109 @@ export async function startWhatsApp(): Promise<void> {
   }
 }
 
+export async function requestPairingCode(phone: string): Promise<string> {
+  await disconnectWhatsApp();
+  await new Promise((r) => setTimeout(r, 1000));
+
+  if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+  }
+
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version } = await fetchLatestBaileysVersion();
+
+  currentStatus = "connecting";
+  currentQR = null;
+  pairingCode = null;
+
+  sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: false,
+    logger: logger.child({ module: "baileys" }) as Parameters<typeof makeWASocket>[0]["logger"],
+    browser: ["The Ritual AI", "Chrome", "1.0.0"],
+    syncFullHistory: false,
+    generateHighQualityLinkPreview: false,
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out waiting for socket open")), 10000);
+
+    sock!.ev.on("connection.update", (update) => {
+      if (update.connection === "open" || update.qr) {
+        clearTimeout(timer);
+        resolve();
+      }
+      if (update.connection === "close") {
+        clearTimeout(timer);
+        reject(new Error("Connection closed before pairing"));
+      }
+    });
+  });
+
+  const normalised = phone.replace(/\D/g, "");
+  const code = await sock.requestPairingCode(normalised);
+  pairingCode = code;
+  pendingPairingPhone = phone;
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", async (update: BaileysEventMap["connection.update"]) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      currentQR = qr;
+      currentStatus = "connecting";
+    }
+
+    if (connection === "close") {
+      currentStatus = "disconnected";
+      currentQR = null;
+      pairingCode = null;
+      pendingPairingPhone = null;
+      const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
+      const shouldReconnect = reason !== DisconnectReason.loggedOut;
+      if (shouldReconnect) {
+        reconnectTimer = setTimeout(() => { void connect(); }, 5000);
+      } else {
+        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      }
+    }
+
+    if (connection === "open") {
+      currentStatus = "open";
+      currentQR = null;
+      pairingCode = null;
+      pendingPairingPhone = null;
+      logger.info("WhatsApp connected via pairing code");
+    }
+  });
+
+  sock.ev.on("messages.upsert", async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
+    if (type !== "notify") return;
+    for (const msg of messages) {
+      if (!msg.message || msg.key.fromMe) continue;
+      const jid = msg.key.remoteJid;
+      if (!jid || jid.endsWith("@g.us")) continue;
+      const phone = jidToPhone(jid);
+      const text = msg.message.conversation ?? msg.message.extendedTextMessage?.text ?? "";
+      if (!text.trim()) continue;
+      logger.info({ phone: phone.slice(-4) + "****" }, "Incoming WhatsApp message");
+      try {
+        await handleIncomingMessage(jid, phone, text);
+      } catch (err) {
+        logger.error({ err }, "Error handling WhatsApp message");
+        await sock?.sendMessage(jid, { text: "Something went wrong. Please try again in a moment." });
+      }
+    }
+  });
+
+  logger.info({ phone: normalised.slice(-4) + "****" }, "Pairing code issued");
+  return code;
+}
+
 export async function disconnectWhatsApp(): Promise<void> {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
@@ -223,8 +353,9 @@ export async function disconnectWhatsApp(): Promise<void> {
   }
   currentStatus = "disconnected";
   currentQR = null;
+  pairingCode = null;
+  pendingPairingPhone = null;
   if (fs.existsSync(AUTH_DIR)) {
     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
   }
 }
-
