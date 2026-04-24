@@ -263,20 +263,24 @@ Plain text only. No emojis. No markdown.`;
       ? coachingResponse.content[0].text
       : "";
 
+  const coachingInputTokens = coachingResponse.usage.input_tokens;
+  const coachingOutputTokens = coachingResponse.usage.output_tokens;
+  const coachingCacheHitTokens = getCacheHitTokens(coachingResponse.usage);
+
+  let memoryInputTokens = 0;
+  let memoryOutputTokens = 0;
   try {
-    await refreshMemorySummary(ctx.user.id);
-    // Token usage for memory refresh is non-critical; intentionally not metered here
-    // to avoid double-counting — this is a background summary, not a user-facing request.
+    const memoryResult = await refreshMemorySummary(ctx.user.id);
+    memoryInputTokens = memoryResult.inputTokens;
+    memoryOutputTokens = memoryResult.outputTokens;
   } catch {
     // Non-fatal: memory refresh failure should not break the response
   }
 
   return {
     response: coachingText,
-    inputTokens: extractionInputTokens + coachingResponse.usage.input_tokens,
-    outputTokens: extractionOutputTokens + coachingResponse.usage.output_tokens,
-    cacheHitTokens:
-      extractionCacheHitTokens +
-      getCacheHitTokens(coachingResponse.usage),
+    inputTokens: extractionInputTokens + coachingInputTokens + memoryInputTokens,
+    outputTokens: extractionOutputTokens + coachingOutputTokens + memoryOutputTokens,
+    cacheHitTokens: extractionCacheHitTokens + coachingCacheHitTokens,
   };
 }
