@@ -10,6 +10,9 @@ router.get("/whatsapp/status", requireAuth, requireAdmin, (_req, res): void => {
 });
 
 router.get("/whatsapp/qr", requireAuth, requireAdmin, (_req, res): void => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+
   const qr = getQR();
   const status = getStatus();
   const code = getPairingCode();
@@ -19,7 +22,7 @@ router.get("/whatsapp/qr", requireAuth, requireAdmin, (_req, res): void => {
     return;
   }
 
-  res.json({ status: "connecting", qr: qr ?? null, pairingCode: code ?? null });
+  res.json({ status, qr: qr ?? null, pairingCode: code ?? null });
 });
 
 router.post("/whatsapp/pair", requireAuth, requireAdmin, async (req, res): Promise<void> => {

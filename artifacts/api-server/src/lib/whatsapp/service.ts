@@ -191,6 +191,10 @@ async function connect(phoneForPairing?: string): Promise<void> {
       } else {
         logger.info("WhatsApp logged out — clearing auth state");
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        // Reconnect with fresh state so a new QR / pairing code is generated
+        reconnectTimer = setTimeout(() => {
+          void connect();
+        }, 3000);
       }
     }
 
@@ -322,6 +326,7 @@ export async function requestPairingCode(phone: string): Promise<string> {
         reconnectTimer = setTimeout(() => { void connect(); }, 5000);
       } else {
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        reconnectTimer = setTimeout(() => { void connect(); }, 3000);
       }
     }
 
