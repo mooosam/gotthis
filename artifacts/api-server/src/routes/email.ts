@@ -129,7 +129,7 @@ router.post("/email/inbound", async (req, res): Promise<void> => {
     reply = "Something went wrong processing your message. Please try again.";
   }
 
-  const outboundInReplyTo = inReplyTo || MessageID || "";
+  const outboundInReplyTo = MessageID || inReplyTo || "";
   const outboundReferences = [references, inReplyTo, MessageID]
     .filter(Boolean)
     .join(" ");
