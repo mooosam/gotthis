@@ -11,6 +11,7 @@ import {
 } from "./context.js";
 import { getTodayDate, loadFreshBudget, getCacheHitTokens } from "./usage.js";
 import type { MessageIntent } from "./classifier.js";
+import { logger } from "../logger.js";
 
 export const OFF_TOPIC_REPLY =
   "I'm your goal coach — let's focus on your targets.";
@@ -158,6 +159,11 @@ Rules:
       });
     }
   }
+
+  logger.info(
+    { userId: ctx.user.id, savedCount: updates.length, goalIds: updates.map((u) => u.goalId) },
+    "Goal progress extraction complete",
+  );
 
   return {
     updates,

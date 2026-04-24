@@ -110,13 +110,26 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
 
   const result = await processMessage(user.id, text);
 
+  logger.info(
+    { phone: phone.slice(-4) + "****", intent: result.intent },
+    "WhatsApp message processed",
+  );
+
   const today = new Date().toISOString().split("T")[0];
   let reply = result.reply;
 
-  if (result.intent === "morning_ritual" || result.intent === "evening_ritual") {
+  if (
+    result.intent === "morning_ritual" ||
+    result.intent === "evening_ritual" ||
+    result.intent === "goal_update"
+  ) {
     try {
       const reviewUrl = await createReviewMagicLink(user.id, today);
-      reply = `${reply}\n\nView your full review: ${reviewUrl}`;
+      const linkLabel =
+        result.intent === "goal_update"
+          ? "See your updated goal progress"
+          : "View your full review";
+      reply = `${reply}\n\n${linkLabel}: ${reviewUrl}`;
     } catch (linkErr) {
       logger.warn({ err: linkErr }, "Failed to generate magic link for WhatsApp response");
     }
