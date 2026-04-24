@@ -92,6 +92,14 @@ async function buildWeeklyChartText(userId: string): Promise<string | null> {
   return `Your weekly goal snapshot:\n${chartUrl}\n\nHave a great Sunday — keep going.`;
 }
 
+function localDateInTimezone(timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
+  } catch {
+    return new Date().toISOString().split("T")[0];
+  }
+}
+
 export function startWeeklyChartCron(
   sendMessage: (jid: string, text: string) => Promise<void>,
 ): void {
@@ -102,6 +110,7 @@ export function startWeeklyChartCron(
           id: usersTable.id,
           timezone: usersTable.timezone,
           whatsappJid: usersTable.whatsappJid,
+          lastWeeklyChartSentAt: usersTable.lastWeeklyChartSentAt,
         })
         .from(usersTable)
         .where(isNotNull(usersTable.whatsappJid));
@@ -109,10 +118,24 @@ export function startWeeklyChartCron(
       for (const user of users) {
         if (!user.whatsappJid || !isSundayMorningInTimezone(user.timezone)) continue;
 
+        const todayLocal = localDateInTimezone(user.timezone);
+        const alreadySentToday =
+          user.lastWeeklyChartSentAt !== null &&
+          new Intl.DateTimeFormat("en-CA", { timeZone: user.timezone }).format(
+            user.lastWeeklyChartSentAt,
+          ) === todayLocal;
+
+        if (alreadySentToday) continue;
+
         const text = await buildWeeklyChartText(user.id);
         if (!text) continue;
 
         await sendMessage(user.whatsappJid, text);
+        await db
+          .update(usersTable)
+          .set({ lastWeeklyChartSentAt: new Date() })
+          .where(eq(usersTable.id, user.id));
+
         logger.info({ userId: user.id }, "Sent weekly goal chart via WhatsApp");
       }
     } catch (err) {
