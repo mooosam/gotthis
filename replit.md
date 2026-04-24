@@ -96,10 +96,25 @@ The AI engine is built around Claude (claude-sonnet-4-6) with prompt caching. Fi
 
 Baileys-based WhatsApp Web connection. No Twilio/Meta API required — uses WhatsApp Web protocol.
 
-- `service.ts` — Singleton Baileys connection. Manages QR generation, reconnection on drop, and incoming message routing.
+- `service.ts` — Singleton Baileys connection. QR generation, auto-reconnect, and full message routing pipeline.
+- `magic-link.ts` — Internal magic link generator for morning/evening ritual review URLs (bypasses HTTP route).
+- `rate-limit.ts` — WhatsApp-layer rate limiter: checks `dailyMessageCount` against a hardcoded cap of 20 messages/day before reaching the AI engine.
+- `weekly-chart.ts` — Sunday morning cron (checks every hour, fires 8-10am in each user's local timezone). Builds a QuickChart bar chart URL from the last 7 days of goal progress and sends it via the stored `whatsappJid`.
+
+### Message Routing Pipeline
+1. JID → phone → `hashPhone()` → look up user in DB + store `whatsappJid` for proactive sends
+2. Unregistered phone → 3-message Welcome Sequence (sign-up instructions)
+3. User found but `onboardingCompleted === false` → prompt to complete onboarding at `/onboarding`
+4. WhatsApp rate limit check (20 messages/day hard cap)
+5. Route to `processMessage()` AI engine
+6. If intent is `morning_ritual` or `evening_ritual` → generate magic link for `/review/:date` and append to reply
+7. Send reply via Baileys socket
+
+### DB Fields (users table)
+- `phoneHash` — SHA-256 HMAC of E.164 phone (without `+`), used for inbound lookup
+- `whatsappJid` — Baileys JID (e.g. `15551234567@s.whatsapp.net`), stored on first message for proactive sends (weekly chart)
+
 - Auth state persisted to `.whatsapp-auth/` directory (gitignored)
-- On incoming message: hash sender phone → look up user by `phoneHash` → call `processMessage` → reply
-- Unlinked senders get a registration prompt pointing them to the dashboard
 - QR code is stored in-memory and exposed at `GET /api/whatsapp/qr`; web UI polls every 4 seconds
 - Service auto-restarts after disconnection (5s delay); clears auth on logout
 

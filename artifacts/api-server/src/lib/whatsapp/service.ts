@@ -10,7 +10,10 @@ import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPhone } from "../phone.js";
 import { processMessage } from "../ai/processor.js";
+import { createReviewMagicLink, getBaseUrl } from "./magic-link.js";
+import { checkWhatsAppRateLimit } from "./rate-limit.js";
 import { logger } from "../logger.js";
+import type { User } from "@workspace/db";
 
 const AUTH_DIR = path.resolve(process.cwd(), ".whatsapp-auth");
 
@@ -33,13 +36,75 @@ export function getStatus(): WAStatus {
   return currentStatus;
 }
 
-async function findUserByPhone(phone: string): Promise<string | null> {
+async function findUserByPhone(phone: string, jid: string): Promise<User | null> {
   const hashed = hashPhone(phone);
   const [user] = await db
-    .select({ id: usersTable.id })
+    .select()
     .from(usersTable)
     .where(eq(usersTable.phoneHash, hashed));
-  return user?.id ?? null;
+
+  if (user && user.whatsappJid !== jid) {
+    await db.update(usersTable).set({ whatsappJid: jid }).where(eq(usersTable.id, user.id));
+  }
+
+  return user ?? null;
+}
+
+export async function sendToJid(jid: string, text: string): Promise<void> {
+  await sock?.sendMessage(jid, { text });
+}
+
+async function sendWelcomeSequence(jid: string): Promise<void> {
+  const base = getBaseUrl();
+  const messages = [
+    `Welcome to The Ritual AI! I'm your personal goal coaching assistant.`,
+    `To get started, sign up at ${base} and link your phone number in Account Settings. Once set up, message me each morning and evening to track your goals and get personalised coaching.`,
+    `If you already have an account, go to Account Settings and enter this number — then come back and say good morning!`,
+  ];
+
+  for (const text of messages) {
+    await sock?.sendMessage(jid, { text });
+    await new Promise((r) => setTimeout(r, 800));
+  }
+}
+
+async function handleIncomingMessage(jid: string, phone: string, text: string): Promise<void> {
+  const user = await findUserByPhone(phone, jid);
+
+  if (!user) {
+    await sendWelcomeSequence(jid);
+    return;
+  }
+
+  if (!user.onboardingCompleted) {
+    const base = getBaseUrl();
+    await sock?.sendMessage(jid, {
+      text: `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`,
+    });
+    return;
+  }
+
+  const rateCheck = await checkWhatsAppRateLimit(user.id);
+  if (!rateCheck.allowed) {
+    await sock?.sendMessage(jid, { text: rateCheck.reason ?? "Daily message limit reached." });
+    return;
+  }
+
+  const result = await processMessage(user.id, text);
+
+  const today = new Date().toISOString().split("T")[0];
+  let reply = result.reply;
+
+  if (result.intent === "morning_ritual" || result.intent === "evening_ritual") {
+    try {
+      const reviewUrl = await createReviewMagicLink(user.id, today);
+      reply = `${reply}\n\nView your full review: ${reviewUrl}`;
+    } catch (linkErr) {
+      logger.warn({ err: linkErr }, "Failed to generate magic link for WhatsApp response");
+    }
+  }
+
+  await sock?.sendMessage(jid, { text: reply });
 }
 
 async function connect(): Promise<void> {
@@ -125,18 +190,7 @@ async function connect(): Promise<void> {
       logger.info({ phone: phone.slice(-4) + "****" }, "Incoming WhatsApp message");
 
       try {
-        const userId = await findUserByPhone(phone);
-
-        if (!userId) {
-          await sock?.sendMessage(jid, {
-            text: "Your phone number isn't linked to an account. Sign up at theritual.ai and add your phone in Settings.",
-          });
-          continue;
-        }
-
-        const result = await processMessage(userId, text);
-
-        await sock?.sendMessage(jid, { text: result.reply });
+        await handleIncomingMessage(jid, phone, text);
       } catch (err) {
         logger.error({ err }, "Error handling WhatsApp message");
         await sock?.sendMessage(jid, {
@@ -173,3 +227,4 @@ export async function disconnectWhatsApp(): Promise<void> {
     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
   }
 }
+

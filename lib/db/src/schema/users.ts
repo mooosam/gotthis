@@ -12,6 +12,7 @@ export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull(),
   phoneHash: text("phone_hash"),
+  whatsappJid: text("whatsapp_jid"),
   timezone: text("timezone").notNull().default("UTC"),
   tier: text("tier").notNull().default("free"),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),

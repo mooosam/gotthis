@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startWhatsApp } from "./lib/whatsapp/service.js";
+import { startWhatsApp, sendToJid } from "./lib/whatsapp/service.js";
+import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
 
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
@@ -36,4 +37,6 @@ app.listen(port, (err) => {
   startWhatsApp().catch((startErr) => {
     logger.error({ err: startErr }, "WhatsApp service failed to start");
   });
+
+  startWeeklyChartCron(sendToJid);
 });
