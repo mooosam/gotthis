@@ -23,10 +23,18 @@ export default function WhatsAppPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
   const fetchQR = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/qr");
+      if (res.status === 403) {
+        setIsAdmin(false);
+        setIsLoading(false);
+        return;
+      }
       if (!res.ok) throw new Error("Failed to fetch QR");
+      setIsAdmin(true);
       const data = (await res.json()) as QRResponse;
 
       if (data.status === "connected") {
@@ -65,6 +73,24 @@ export default function WhatsAppPage() {
       setIsDisconnecting(false);
     }
   };
+
+  if (isAdmin === false) {
+    return (
+      <AppLayout>
+        <div className="space-y-6 max-w-xl">
+          <h1 className="text-3xl font-serif font-bold tracking-tight text-foreground">WhatsApp</h1>
+          <Card className="border-border/40 shadow-sm">
+            <CardContent className="py-12 text-center">
+              <Smartphone className="mx-auto h-10 w-10 text-muted-foreground/40 mb-4" />
+              <p className="text-sm text-muted-foreground">
+                WhatsApp management is restricted to the app administrator.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

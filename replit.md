@@ -104,9 +104,15 @@ Baileys-based WhatsApp Web connection. No Twilio/Meta API required — uses What
 - Service auto-restarts after disconnection (5s delay); clears auth on logout
 
 ### Setup
-1. Go to `/whatsapp` in the dashboard
-2. Scan the QR code with WhatsApp (Settings → Linked Devices → Link a Device)
-3. Ensure your phone number is saved in account settings (in E.164 format, e.g. `+15551234567`)
+1. Set `ADMIN_USER_IDS` environment variable to your Clerk user ID (comma-separated for multiple admins). If not set, all authenticated users are treated as admins — set this in production.
+2. Go to `/whatsapp` in the dashboard
+3. Scan the QR code with WhatsApp (Settings → Linked Devices → Link a Device)
+4. Ensure your phone number is saved in account settings (in E.164 format, e.g. `+15551234567`)
+
+### Security
+- WhatsApp control plane endpoints (`/api/whatsapp/qr`, `/api/whatsapp/status`, `/api/whatsapp/disconnect`) are gated by `requireAdmin` middleware
+- `requireAdmin` checks the authenticated user's ID against `ADMIN_USER_IDS` env var
+- If `ADMIN_USER_IDS` is empty, all authenticated users pass (development default); set it in production
 
 ## Auth
 
