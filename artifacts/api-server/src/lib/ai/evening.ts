@@ -11,6 +11,7 @@ import {
 } from "./context.js";
 import { getTodayDate, loadFreshBudget, checkBudgetForUser, getCacheHitTokens } from "./usage.js";
 import { refreshMemorySummary } from "./memory.js";
+import { updateStreakForGoal, STREAK_MILESTONES, buildShareUrl } from "./streaks.js";
 
 export interface GoalCompletion {
   goalId: string;
@@ -183,6 +184,8 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
     });
   }
 
+  const streakMilestoneMessages: string[] = [];
+
   for (const goalUpdate of logData.goalUpdates) {
     await db
       .update(goalsTable)
@@ -191,6 +194,30 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
         lastCheckedAt: new Date(),
       })
       .where(and(eq(goalsTable.id, goalUpdate.goalId), eq(goalsTable.userId, ctx.user.id)));
+
+    const streakResult = await updateStreakForGoal(
+      goalUpdate.goalId,
+      ctx.user.id,
+      goalUpdate.goalTitle,
+      goalUpdate.percentProgress,
+    );
+
+    if (streakResult) {
+      if (streakResult.hitMilestone) {
+        const [goalRow] = await db
+          .select({ shareToken: goalsTable.shareToken })
+          .from(goalsTable)
+          .where(and(eq(goalsTable.id, goalUpdate.goalId), eq(goalsTable.userId, ctx.user.id)));
+        const shareUrl = goalRow?.shareToken ? buildShareUrl(goalRow.shareToken) : null;
+        const sharePrompt = shareUrl
+          ? `\n\nYou've hit a ${streakResult.newStreak}-day streak on ${goalUpdate.goalTitle}. Want to share your progress? ${shareUrl}`
+          : `\n\nYou've hit a ${streakResult.newStreak}-day streak on ${goalUpdate.goalTitle}. That is a real milestone.`;
+        streakMilestoneMessages.push(sharePrompt);
+      }
+      if (streakResult.wasGrace) {
+        streakMilestoneMessages.push(`\n\nGrace period applied for ${goalUpdate.goalTitle} — streak preserved.`);
+      }
+    }
   }
 
   // Load a fresh budget snapshot, then adjust for extraction tokens that have been
@@ -258,10 +285,14 @@ Plain text only. No emojis. No markdown.`;
     messages: coachingMessages,
   });
 
-  const coachingText =
+  const baseCoachingText =
     coachingResponse.content[0]?.type === "text"
       ? coachingResponse.content[0].text
       : "";
+
+  const coachingText = streakMilestoneMessages.length > 0
+    ? baseCoachingText + streakMilestoneMessages.join("")
+    : baseCoachingText;
 
   const coachingInputTokens = coachingResponse.usage.input_tokens;
   const coachingOutputTokens = coachingResponse.usage.output_tokens;

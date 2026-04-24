@@ -10,6 +10,7 @@ import {
   type UserContext,
 } from "./context.js";
 import { loadFreshBudget, getCacheHitTokens } from "./usage.js";
+import { getActiveMilestone } from "./streaks.js";
 
 export interface MorningRitualResult {
   response: string;
@@ -75,18 +76,27 @@ export async function runMorningRitual(
     .map((g) => `${g.title}: ${g.currentStreak}-day streak`)
     .join(", ");
 
+  const activeMilestones = await Promise.all(
+    ctx.goals.map(async (g) => {
+      const milestone = await getActiveMilestone(g.id, ctx.user.id);
+      return milestone ? `${g.title} — active milestone: "${milestone.title}" (step ${milestone.order})` : null;
+    }),
+  );
+  const milestoneLines = activeMilestones.filter(Boolean).join("\n");
+
   const prompt = `Morning ritual triggered. User message: "${userMessage}"
 
 ${yesterdayHighlight}
 ${streakLines ? `Active streaks: ${streakLines}` : "No active streaks."}
+${milestoneLines ? `Current milestones:\n${milestoneLines}` : ""}
 
-Write a morning coaching message with exactly 2-4 sentences:
+Write a morning coaching message with exactly 3-4 sentences:
 1. One sentence summarising yesterday's highlights (use the data above; if no log, note the fresh start).
 2. One sentence on streaks (if any active ones, call them out specifically).
-3. One sentence naming the single most important goal focus for today.
+3. If there are active milestones, name the most relevant one as today's specific focus. Otherwise name the single most important goal for today.
 4. End with this exact line: "See yesterday's full review here: ${magicLinkUrl}"
 
-Plain text only. No emojis. No markdown. Keep it under 80 words before the link line.`;
+Plain text only. No emojis. No markdown. Keep it under 90 words before the link line.`;
 
   const messages: Anthropic.MessageParam[] = [
     {

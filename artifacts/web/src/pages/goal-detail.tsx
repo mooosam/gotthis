@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
-import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon } from "lucide-react";
+import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon, Circle, Plus, Share2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -14,6 +14,20 @@ import {
   useListDailyLogs
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
+
+interface Milestone {
+  id: string;
+  goalId: string;
+  userId: string;
+  title: string;
+  order: number;
+  completed: boolean;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 import { AppLayout } from "@/components/layout/app-layout";
 import { Button } from "@/components/ui/button";
@@ -92,6 +106,74 @@ export default function GoalDetailPage({ id }: { id: string }) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [progressValue, setProgressValue] = useState<number[]>([0]);
   const [isUpdatingProgress, setIsUpdatingProgress] = useState(false);
+
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
+  const [addingMilestone, setAddingMilestone] = useState(false);
+  const [showAddMilestone, setShowAddMilestone] = useState(false);
+
+  const fetchMilestones = useCallback(async () => {
+    if (!id) return;
+    const r = await apiFetch(`${API_BASE}/api/goals/${id}/milestones`);
+    if (r.ok) {
+      const data = await r.json();
+      setMilestones(data);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchMilestones();
+  }, [fetchMilestones]);
+
+  const handleAddMilestone = async () => {
+    if (!newMilestoneTitle.trim()) return;
+    setAddingMilestone(true);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/goals/${id}/milestones`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newMilestoneTitle.trim() }),
+      });
+      if (r.ok) {
+        setNewMilestoneTitle("");
+        setShowAddMilestone(false);
+        await fetchMilestones();
+      } else {
+        toast({ title: "Failed to add milestone", variant: "destructive" });
+      }
+    } finally {
+      setAddingMilestone(false);
+    }
+  };
+
+  const handleToggleMilestone = async (milestone: Milestone) => {
+    const r = await apiFetch(`${API_BASE}/api/goals/${id}/milestones/${milestone.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed: !milestone.completed }),
+    });
+    if (r.ok) {
+      await fetchMilestones();
+    }
+  };
+
+  const handleDeleteMilestone = async (milestoneId: string) => {
+    const r = await apiFetch(`${API_BASE}/api/goals/${id}/milestones/${milestoneId}`, {
+      method: "DELETE",
+    });
+    if (r.ok) {
+      await fetchMilestones();
+    }
+  };
+
+  const handleCopyShareLink = () => {
+    if (!goal?.shareToken) return;
+    const base = window.location.origin + (import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "");
+    const url = `${base}/share/${goal.shareToken}`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast({ title: "Share link copied" });
+    });
+  };
 
   const form = useForm<EditGoalValues>({
     resolver: zodResolver(editGoalSchema),
@@ -246,6 +328,9 @@ export default function GoalDetailPage({ id }: { id: string }) {
           </div>
           
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleCopyShareLink}>
+              <Share2 className="mr-2 h-4 w-4" /> Share
+            </Button>
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" onClick={() => {
@@ -504,6 +589,77 @@ export default function GoalDetailPage({ id }: { id: string }) {
                 </CardContent>
               </Card>
             )}
+
+            <Card className="border-border/40 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="font-serif text-base">Milestones</CardTitle>
+                  <button
+                    onClick={() => setShowAddMilestone((v) => !v)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    title="Add milestone"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                {milestones.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {milestones.filter((m) => m.completed).length} of {milestones.length} completed
+                  </p>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {milestones.length === 0 && !showAddMilestone && (
+                  <p className="text-sm text-muted-foreground">
+                    No milestones yet. Break your goal into steps.
+                  </p>
+                )}
+                {milestones.map((m, i) => (
+                  <div key={m.id} className="flex items-start gap-2 group">
+                    <button
+                      onClick={() => handleToggleMilestone(m)}
+                      className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {m.completed
+                        ? <CheckCircle2 className="h-4 w-4 text-primary" />
+                        : <Circle className="h-4 w-4" />}
+                    </button>
+                    <span className={`text-sm flex-1 leading-snug ${m.completed ? "line-through text-muted-foreground" : ""}`}>
+                      <span className="text-xs text-muted-foreground mr-1">Step {i + 1}.</span>
+                      {m.title}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteMilestone(m.id)}
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all shrink-0"
+                      title="Remove"
+                    >
+                      <Trash className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+
+                {showAddMilestone && (
+                  <div className="flex gap-2 pt-1">
+                    <Input
+                      value={newMilestoneTitle}
+                      onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                      placeholder="e.g. Run 3x this week"
+                      className="text-sm h-8"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddMilestone()}
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8 shrink-0"
+                      onClick={handleAddMilestone}
+                      disabled={addingMilestone || !newMilestoneTitle.trim()}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

@@ -57,6 +57,7 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
       category: category ?? "general",
       deadline: deadline ?? null,
       successCriteria: successCriteria ?? null,
+      shareToken: nanoid(16),
     })
     .returning();
 
