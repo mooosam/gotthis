@@ -8,6 +8,7 @@ import dashboardRouter from "./dashboard";
 import magicLinksRouter from "./magic-links";
 import aiRouter from "./ai";
 import whatsappRouter from "./whatsapp";
+import emailRouter from "./email";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(dashboardRouter);
 router.use(magicLinksRouter);
 router.use(aiRouter);
 router.use(whatsappRouter);
+router.use(emailRouter);
 
 export default router;
