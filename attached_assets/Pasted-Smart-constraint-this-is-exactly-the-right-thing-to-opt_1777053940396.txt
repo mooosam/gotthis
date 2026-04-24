@@ -1,0 +1,82 @@
+Smart constraint — this is exactly the right thing to optimize for, both on cost and on user experience. Verbose WhatsApp messages are also just bad UX; nobody wants to read paragraphs in a chat thread.
+
+**The core principle:**
+
+WhatsApp should only ever answer one of three questions:
+- *What do I need to do today?* (GM)
+- *How did I do today?* (GN)
+- *What's my status on X?* (on-demand query)
+
+Everything else — history, charts, full breakdowns, milestone ladders — lives on the dashboard. The link is the escape hatch.
+
+---
+
+**Token optimization by touchpoint:**
+
+**Good Morning**
+Keep it to 3 lines maximum:
+```
+Good morning [name]. Day 9 streak.
+
+Today: Run 20 mins · Read 30 mins · Water 8 cups
+
+Dashboard → [link]
+```
+No preamble, no motivational filler, no explanation. The AI's job here is retrieval, not generation — just pull today's goals and format them. Minimal tokens.
+
+**Good Night**
+One confirmation line per goal, then close:
+```
+Logged. Here's today:
+
+✓ Run 20 mins
+✗ Reading — missed
+✓ Water
+
+Streak: 9 days. Weekly summary Sunday. → [link]
+```
+Again, retrieval and formatting — not generation. The AI isn't writing prose, it's populating a template.
+
+**On-demand queries**
+This is where token usage can spike if you're not careful. The fix is to classify the query before sending it to the AI:
+
+- *"How am I doing on running?"* → template response, pull from DB, minimal AI involvement
+- *"Why am I not making progress?"* → this genuinely needs AI reasoning → generate, but cap response length aggressively in the system prompt
+
+The system prompt instruction should be explicit: *"Respond in 3-5 lines maximum. Never use paragraphs. Always end with a dashboard link."*
+
+**Weekly Summary**
+This is the one place slightly longer output is justified — but still structured, not prose:
+```
+Week 12 summary:
+
+Running: 4/7 days ▓▓▓▓░░░
+Reading: 6/7 days ▓▓▓▓▓▓░
+Water: 7/7 days ▓▓▓▓▓▓▓
+
+Best streak: 9 days 🔥
+Missed most: Running
+
+Are you keeping the running target or scaling back?
+
+Full report → [link]
+```
+This is the one message worth spending slightly more tokens on because it's weekly, not daily, and the re-engagement question at the end earns its cost in retention value.
+
+---
+
+**Structural rules to enforce in the system prompt:**
+
+1. **No greetings or sign-offs** — the AI never opens with "Sure!" or "Great question!" — straight to the answer
+2. **Hard line limit** — 5 lines for daily messages, 10 lines for weekly
+3. **No explanations unless asked** — just state the fact, not why
+4. **Template-first, AI-last** — if the response can be assembled from DB data with a template, don't call the AI at all. Only invoke the LLM when the query genuinely requires reasoning or language generation
+5. **Aggressive prompt caching** — your system prompt and goal data should be cached so you're not re-sending them on every message
+
+---
+
+**The biggest token leak to watch:**
+
+Conversation history. If you're sending the full WhatsApp thread history to the AI on every message, costs will compound fast. Instead, maintain a **structured state object** in your DB — current goals, streak counts, today's check-in status, last 7 days — and send only that as context, not raw chat history. The AI gets everything it needs in ~200 tokens instead of potentially thousands.
+
+This aligns with what you already decided in Ritual AI's architecture — Claude Sonnet with aggressive prompt caching. That decision becomes even more valuable with these constraints in place.
