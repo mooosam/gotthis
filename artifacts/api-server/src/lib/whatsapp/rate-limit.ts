@@ -1,13 +1,12 @@
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const WHATSAPP_DAILY_LIMIT = 20;
-
 export async function checkWhatsAppRateLimit(userId: string): Promise<{ allowed: boolean; reason?: string }> {
   const [user] = await db
     .select({
       dailyMessageCount: usersTable.dailyMessageCount,
       dailyMessageResetAt: usersTable.dailyMessageResetAt,
+      dailyMessageCap: usersTable.dailyMessageCap,
     })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
@@ -18,11 +17,12 @@ export async function checkWhatsAppRateLimit(userId: string): Promise<{ allowed:
   const resetDate = user.dailyMessageResetAt?.toISOString().split("T")[0];
 
   const effectiveCount = resetDate === today ? user.dailyMessageCount : 0;
+  const cap = user.dailyMessageCap ?? 5;
 
-  if (effectiveCount >= WHATSAPP_DAILY_LIMIT) {
+  if (effectiveCount >= cap) {
     return {
       allowed: false,
-      reason: `You have reached the daily limit of ${WHATSAPP_DAILY_LIMIT} messages. Your limit resets at midnight.`,
+      reason: `Daily message limit of ${cap} reached. Your limit resets at midnight.`,
     };
   }
 
