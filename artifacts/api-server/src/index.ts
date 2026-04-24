@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startWhatsApp } from "./lib/whatsapp/service.js";
 
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
@@ -31,4 +32,8 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  startWhatsApp().catch((startErr) => {
+    logger.error({ err: startErr }, "WhatsApp service failed to start");
+  });
 });

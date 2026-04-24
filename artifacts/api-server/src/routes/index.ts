@@ -7,6 +7,7 @@ import memoryRouter from "./memory";
 import dashboardRouter from "./dashboard";
 import magicLinksRouter from "./magic-links";
 import aiRouter from "./ai";
+import whatsappRouter from "./whatsapp";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(memoryRouter);
 router.use(dashboardRouter);
 router.use(magicLinksRouter);
 router.use(aiRouter);
+router.use(whatsappRouter);
 
 export default router;

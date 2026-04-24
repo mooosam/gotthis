@@ -54,17 +54,18 @@ router.get(
     const goalNotes = new Map<string, string[]>();
     for (const log of dailyLogNotes) {
       const data = log.data as Record<string, unknown> | null;
-      const goalStatuses = data?.goalStatuses as
-        | Array<{ goalId?: string; title?: string; progressNote?: string }>
+
+      const goalUpdates = (data?.goalUpdates ?? data?.goalStatuses) as
+        | Array<{ goalId?: string; title?: string; note?: string; progressNote?: string }>
         | undefined;
 
-      if (!goalStatuses) {
+      if (!goalUpdates) {
         continue;
       }
 
-      for (const status of goalStatuses) {
-        const goalId = status.goalId;
-        const note = status.progressNote?.trim();
+      for (const update of goalUpdates) {
+        const goalId = update.goalId;
+        const note = (update.note ?? update.progressNote ?? "").trim();
         if (!goalId || !note) {
           continue;
         }

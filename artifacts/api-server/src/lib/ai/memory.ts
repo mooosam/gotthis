@@ -12,7 +12,13 @@ export interface MemorySummaryShape {
   lastUpdated: string;
 }
 
-export async function refreshMemorySummary(userId: string): Promise<MemorySummaryShape> {
+export interface RefreshMemoryResult {
+  summary: MemorySummaryShape;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export async function refreshMemorySummary(userId: string): Promise<RefreshMemoryResult> {
   const [user] = await db
     .select()
     .from(usersTable)
@@ -86,6 +92,9 @@ Respond with ONLY a JSON object in this exact shape (no markdown, no explanation
     messages: [{ role: "user", content: prompt }],
   });
 
+  const inputTokens = response.usage.input_tokens;
+  const outputTokens = response.usage.output_tokens;
+
   const rawText =
     response.content[0]?.type === "text" ? response.content[0].text.trim() : "{}";
 
@@ -121,5 +130,5 @@ Respond with ONLY a JSON object in this exact shape (no markdown, no explanation
     });
   }
 
-  return summary;
+  return { summary, inputTokens, outputTokens };
 }

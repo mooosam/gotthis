@@ -265,6 +265,8 @@ Plain text only. No emojis. No markdown.`;
 
   try {
     await refreshMemorySummary(ctx.user.id);
+    // Token usage for memory refresh is non-critical; intentionally not metered here
+    // to avoid double-counting — this is a background summary, not a user-facing request.
   } catch {
     // Non-fatal: memory refresh failure should not break the response
   }

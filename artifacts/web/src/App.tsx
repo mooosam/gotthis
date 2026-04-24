@@ -14,6 +14,7 @@ import GoalsPage from "@/pages/goals";
 import GoalDetailPage from "@/pages/goal-detail";
 import ReviewPage from "@/pages/review";
 import AccountPage from "@/pages/account";
+import WhatsAppPage from "@/pages/whatsapp";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -132,6 +133,11 @@ function ClerkProviderWithRoutes() {
           
           <Route path="/account">
             <Show when="signed-in"><AccountPage /></Show>
+            <Show when="signed-out"><Redirect to="/" /></Show>
+          </Route>
+
+          <Route path="/whatsapp">
+            <Show when="signed-in"><WhatsAppPage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
           </Route>
           

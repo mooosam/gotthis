@@ -65,7 +65,10 @@ The Ritual AI is a goal coaching app where:
 - `POST /api/magic-links` — generate time-limited magic link
 - `GET /api/magic-links/:token/resolve` — resolve magic link (public)
 - `POST /api/ai/message` — send a message to the AI coach (requires auth); returns `{reply, intent, usage}`
-- `POST /api/ai/memory/refresh` — regenerate the rolling memory summary from last 7 days of logs (requires auth)
+- `POST /api/ai/memory/refresh` — regenerate the rolling memory summary from last 7 days of logs (requires auth, metered against daily budget)
+- `GET /api/whatsapp/status` — check WhatsApp connection status and QR availability (requires auth)
+- `GET /api/whatsapp/qr` — get current WhatsApp QR code string or connected status (requires auth)
+- `POST /api/whatsapp/disconnect` — disconnect WhatsApp session and clear auth state (requires auth)
 
 ## AI Ritual Engine (artifacts/api-server/src/lib/ai/)
 
@@ -82,12 +85,28 @@ The AI engine is built around Claude (claude-sonnet-4-6) with prompt caching. Fi
 ### Prompt Caching Strategy
 - System prompt block: `cache_control: {type: "ephemeral"}`
 - User context block (memory + goals): `cache_control: {type: "ephemeral"}`
-- Recent logs block: `cache_control: {type: "ephemeral"}`
+- Recent logs block: NOT cached (changes frequently, caching would waste cache slots)
 - Current message: no cache
 
 ### AI Integration
 - Uses `@workspace/integrations-anthropic-ai` (Replit AI Integrations, no user key needed)
 - Env vars: `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY` (auto-set)
+
+## WhatsApp Integration (artifacts/api-server/src/lib/whatsapp/)
+
+Baileys-based WhatsApp Web connection. No Twilio/Meta API required — uses WhatsApp Web protocol.
+
+- `service.ts` — Singleton Baileys connection. Manages QR generation, reconnection on drop, and incoming message routing.
+- Auth state persisted to `.whatsapp-auth/` directory (gitignored)
+- On incoming message: hash sender phone → look up user by `phoneHash` → call `processMessage` → reply
+- Unlinked senders get a registration prompt pointing them to the dashboard
+- QR code is stored in-memory and exposed at `GET /api/whatsapp/qr`; web UI polls every 4 seconds
+- Service auto-restarts after disconnection (5s delay); clears auth on logout
+
+### Setup
+1. Go to `/whatsapp` in the dashboard
+2. Scan the QR code with WhatsApp (Settings → Linked Devices → Link a Device)
+3. Ensure your phone number is saved in account settings (in E.164 format, e.g. `+15551234567`)
 
 ## Auth
 
@@ -111,6 +130,7 @@ React + Vite frontend at root path `/`. Built with:
 - `/goal/:goalId` — Goal detail with Recharts progress chart, CRUD operations
 - `/review/:date` — Daily log view/edit for a specific date (YYYY-MM-DD)
 - `/account` — Tier badge, usage meters, profile settings
+- `/whatsapp` — WhatsApp QR code connect/disconnect page; polls `/api/whatsapp/qr` every 4s
 
 ### Auth Flow
 - New Clerk users are auto-provisioned in the DB on first authenticated request (see `requireAuth.ts`)

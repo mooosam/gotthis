@@ -59,17 +59,19 @@ const OFF_TOPIC_PATTERNS = [
   /\btranslate\b/i,
 ];
 
-function isAmbiguous(message: string): boolean {
+function hasAnyKnownPattern(message: string): boolean {
   const text = message.toLowerCase();
-  const hasGoalKeyword = GOAL_UPDATE_PATTERNS.some((p) => p.test(text));
-  const hasMorningKeyword = MORNING_PATTERNS.some((p) => p.test(text));
-  const hasEveningKeyword = EVENING_PATTERNS.some((p) => p.test(text));
-  const hasOffTopicKeyword = OFF_TOPIC_PATTERNS.some((p) => p.test(text));
+  return (
+    MORNING_PATTERNS.some((p) => p.test(text)) ||
+    EVENING_PATTERNS.some((p) => p.test(text)) ||
+    GOAL_UPDATE_PATTERNS.some((p) => p.test(text)) ||
+    OFF_TOPIC_PATTERNS.some((p) => p.test(text))
+  );
+}
 
-  if (hasMorningKeyword || hasEveningKeyword || hasGoalKeyword || hasOffTopicKeyword) {
-    return false;
-  }
-  return message.trim().length > 30;
+function isAmbiguous(message: string): boolean {
+  if (hasAnyKnownPattern(message)) return false;
+  return message.trim().length >= 10;
 }
 
 export function classifyIntentKeywords(message: string): MessageIntent {
@@ -97,6 +99,12 @@ export interface ClassificationResult {
 export async function classifyIntentWithFallback(
   message: string,
 ): Promise<ClassificationResult> {
+  const trimmed = message.trim();
+
+  if (trimmed.length < 10 && !hasAnyKnownPattern(trimmed)) {
+    return { intent: "off_topic", inputTokens: 0, outputTokens: 0 };
+  }
+
   const keywordResult = classifyIntentKeywords(message);
 
   if (keywordResult !== "check_in" || !isAmbiguous(message)) {

@@ -11,7 +11,8 @@ import {
   CalendarDays, 
   Menu,
   Moon,
-  Sun
+  Sun,
+  Smartphone
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ function Sidebar({ className }: { className?: string }) {
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/goals", label: "Goals", icon: Target },
     { href: `/review/${new Date().toISOString().split('T')[0]}`, label: "Today's Review", icon: CalendarDays },
+    { href: "/whatsapp", label: "WhatsApp", icon: Smartphone },
   ];
 
   return (
