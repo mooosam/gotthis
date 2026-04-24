@@ -211,15 +211,18 @@ export async function runCheckIn(
   let instructionSuffix: string;
   if (intent === "goal_update" && savedUpdates.length > 0) {
     const updateSummary = savedUpdates
-      .map((u) => `${u.goalTitle}: ${u.percentProgress}% progress logged`)
+      .map((u) => {
+        const remaining = Math.max(0, 100 - u.percentProgress);
+        return `${u.goalTitle}: ${u.percentProgress}% done today (${remaining}% remaining)`;
+      })
       .join(", ");
-    instructionSuffix = `The user reported goal progress. Progress has been saved: ${updateSummary}. Acknowledge what they accomplished specifically and encourage their next step. Keep your response to 2-3 sentences. Plain text only, no markdown, no emojis.`;
+    instructionSuffix = `The user reported goal progress. Progress has been saved: ${updateSummary}. Use the goal title to calculate concrete numbers remaining (e.g. if a '50 pushups' goal is 30% done, tell them they have 35 left). Acknowledge what they accomplished and state exactly how much is left. Keep your response to 2-3 sentences. Plain text only, no markdown, no emojis.`;
   } else if (intent === "goal_update") {
     instructionSuffix =
       "The user is sharing a goal update. Acknowledge what they said and ask a focused follow-up about which goal they are working on. Keep your response to 3 sentences. Plain text only.";
   } else {
     instructionSuffix =
-      "The user is checking in mid-day. Respond helpfully and briefly in the context of their goals. Keep your response to 3-4 sentences. Plain text only.";
+      "The user is checking in mid-day. Use the goal progress data above to answer precisely. If they ask how much is left for a goal, calculate it from the 'Progress today' percentage and the numeric target in the goal title (e.g. 70% remaining of a '50 pushups per day' goal = 35 pushups left). Be specific with numbers. Keep your response to 2-3 sentences. Plain text only, no markdown.";
   }
 
   const messages: Anthropic.MessageParam[] = [
