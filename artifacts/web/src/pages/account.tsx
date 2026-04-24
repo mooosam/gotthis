@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -77,6 +78,7 @@ const NEWSLETTER_OPTIONS = [
 const settingsSchema = z.object({
   timezone: z.string().min(1),
   newsletterCadence: z.string().min(1),
+  phone: z.string().optional(),
 });
 
 type SettingsValues = z.infer<typeof settingsSchema>;
@@ -101,6 +103,7 @@ export default function AccountPage() {
       form.reset({
         timezone: profile.timezone,
         newsletterCadence: profile.newsletterCadence,
+        phone: "",
       });
     }
     setIsEditing(true);
@@ -108,7 +111,12 @@ export default function AccountPage() {
 
   const onSubmit = async (data: SettingsValues) => {
     try {
-      await updateProfile.mutateAsync({ data });
+      const payload: SettingsValues = {
+        timezone: data.timezone,
+        newsletterCadence: data.newsletterCadence,
+        ...(data.phone?.trim() ? { phone: data.phone.trim() } : {}),
+      };
+      await updateProfile.mutateAsync({ data: payload });
       queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
       toast({ title: "Settings saved" });
       setIsEditing(false);
@@ -205,15 +213,15 @@ export default function AccountPage() {
               {/* WhatsApp / phone */}
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" /> WhatsApp
+                  <MessageSquare className="h-4 w-4" /> WhatsApp Number
                 </p>
                 {profile.phoneHash ? (
                   <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                    Connected
+                    Phone linked — click Edit to update it.
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground italic">
-                    Not connected — send your number via the onboarding flow or WhatsApp chat.
+                    Not linked — click Edit and enter your WhatsApp number so the AI can recognise you.
                   </p>
                 )}
               </div>
@@ -249,6 +257,29 @@ export default function AccountPage() {
                             </SelectContent>
                           </Select>
                           <FormDescription>Controls when daily prompts arrive.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4" /> WhatsApp Number
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="+14168287891"
+                              {...field}
+                              data-testid="input-phone"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Enter your number in international format (e.g. +14168287891). This links your WhatsApp to your account so the AI can reply to you.
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}

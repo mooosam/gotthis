@@ -30,6 +30,10 @@ let sock: ReturnType<typeof makeWASocket> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPairingPhone: string | null = null;
 
+// Track message IDs that the bot itself sent, so we can ignore their echo
+// in messages.upsert without dropping genuine user self-messages.
+const botSentIds = new Set<string>();
+
 export function getQR(): string | null {
   return currentQR;
 }
@@ -56,8 +60,13 @@ async function findUserByPhone(phone: string, jid: string): Promise<User | null>
   return user ?? null;
 }
 
+async function sendTracked(jid: string, text: string): Promise<void> {
+  const result = await sock?.sendMessage(jid, { text });
+  if (result?.key?.id) botSentIds.add(result.key.id);
+}
+
 export async function sendToJid(jid: string, text: string): Promise<void> {
-  await sock?.sendMessage(jid, { text });
+  await sendTracked(jid, text);
 }
 
 async function sendWelcomeSequence(jid: string): Promise<void> {
@@ -69,7 +78,7 @@ async function sendWelcomeSequence(jid: string): Promise<void> {
   ];
 
   for (const text of messages) {
-    await sock?.sendMessage(jid, { text });
+    await sendTracked(jid, text);
     await new Promise((r) => setTimeout(r, 800));
   }
 }
@@ -84,15 +93,13 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
 
   if (!user.onboardingCompleted) {
     const base = getBaseUrl();
-    await sock?.sendMessage(jid, {
-      text: `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`,
-    });
+    await sendTracked(jid, `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`);
     return;
   }
 
   const rateCheck = await checkWhatsAppRateLimit(user.id);
   if (!rateCheck.allowed) {
-    await sock?.sendMessage(jid, { text: rateCheck.reason ?? "Daily message limit reached." });
+    await sendTracked(jid, rateCheck.reason ?? "Daily message limit reached.");
     return;
   }
 
@@ -110,7 +117,7 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
     }
   }
 
-  await sock?.sendMessage(jid, { text: reply });
+  await sendTracked(jid, reply);
 }
 
 async function connect(phoneForPairing?: string): Promise<void> {
@@ -201,12 +208,22 @@ async function connect(phoneForPairing?: string): Promise<void> {
 
     for (const msg of messages) {
       if (!msg.message) continue;
-      if (msg.key.fromMe) continue;
+
+      const msgId = msg.key.id ?? "";
+
+      // Skip messages the bot sent (avoid echoing our own replies)
+      if (msg.key.fromMe && botSentIds.has(msgId)) {
+        botSentIds.delete(msgId);
+        continue;
+      }
 
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
 
+      // jid is already the phone-based JID (without device suffix) in all cases,
+      // including self-chat where remoteJid equals the user's own number.
       const phone = jidToPhone(jid);
+
       const text =
         msg.message.conversation ??
         msg.message.extendedTextMessage?.text ??
@@ -214,15 +231,13 @@ async function connect(phoneForPairing?: string): Promise<void> {
 
       if (!text.trim()) continue;
 
-      logger.info({ phone: phone.slice(-4) + "****" }, "Incoming WhatsApp message");
+      logger.info({ phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe }, "Incoming WhatsApp message");
 
       try {
         await handleIncomingMessage(jid, phone, text);
       } catch (err) {
         logger.error({ err }, "Error handling WhatsApp message");
-        await sock?.sendMessage(jid, {
-          text: "Something went wrong. Please try again in a moment.",
-        });
+        await sendTracked(jid, "Something went wrong. Please try again in a moment.");
       }
     }
   });
@@ -322,18 +337,27 @@ export async function requestPairingCode(phone: string): Promise<string> {
   sock.ev.on("messages.upsert", async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
     if (type !== "notify") return;
     for (const msg of messages) {
-      if (!msg.message || msg.key.fromMe) continue;
+      if (!msg.message) continue;
+
+      const msgId = msg.key.id ?? "";
+      if (msg.key.fromMe && botSentIds.has(msgId)) {
+        botSentIds.delete(msgId);
+        continue;
+      }
+
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
+
       const phone = jidToPhone(jid);
+
       const text = msg.message.conversation ?? msg.message.extendedTextMessage?.text ?? "";
       if (!text.trim()) continue;
-      logger.info({ phone: phone.slice(-4) + "****" }, "Incoming WhatsApp message");
+      logger.info({ phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe }, "Incoming WhatsApp message");
       try {
         await handleIncomingMessage(jid, phone, text);
       } catch (err) {
         logger.error({ err }, "Error handling WhatsApp message");
-        await sock?.sendMessage(jid, { text: "Something went wrong. Please try again in a moment." });
+        await sendTracked(jid, "Something went wrong. Please try again in a moment.");
       }
     }
   });
