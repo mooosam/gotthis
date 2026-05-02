@@ -3,20 +3,22 @@ import { eq, and } from "drizzle-orm";
 
 export const STREAK_MILESTONES = [7, 14, 30, 60, 100];
 
-function getDateString(date: Date): string {
-  return date.toISOString().split("T")[0];
+export function getDateInTimezone(timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
+  } catch {
+    return new Date().toISOString().split("T")[0];
+  }
 }
 
-function getYesterdayString(): string {
+function offsetDate(timezone: string, dayOffset: number): string {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return getDateString(d);
-}
-
-function getDayBeforeYesterdayString(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 2);
-  return getDateString(d);
+  d.setDate(d.getDate() + dayOffset);
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(d);
+  } catch {
+    return d.toISOString().split("T")[0];
+  }
 }
 
 export interface StreakUpdateResult {
@@ -32,12 +34,13 @@ export async function updateStreakForGoal(
   userId: string,
   goalTitle: string,
   percentProgress: number,
+  timezone: string = "UTC",
 ): Promise<StreakUpdateResult | null> {
   if (percentProgress < 100) return null;
 
-  const today = getDateString(new Date());
-  const yesterday = getYesterdayString();
-  const dayBeforeYesterday = getDayBeforeYesterdayString();
+  const today = getDateInTimezone(timezone);
+  const yesterday = offsetDate(timezone, -1);
+  const dayBeforeYesterday = offsetDate(timezone, -2);
 
   const [goal] = await db
     .select()

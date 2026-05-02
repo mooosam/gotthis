@@ -9,10 +9,12 @@ export interface UserContext {
     title: string;
     category: string;
     status: string;
+    cadence: string;
     progress: number;
     deadline: string | null;
     successCriteria: string | null;
     currentStreak: number;
+    lastProgressResetDate: string | null;
   }>;
   memorySummary: Record<string, unknown> | null;
   recentLogs: Array<{
@@ -38,10 +40,12 @@ export async function assembleContext(userId: string): Promise<UserContext> {
       title: goalsTable.title,
       category: goalsTable.category,
       status: goalsTable.status,
+      cadence: goalsTable.cadence,
       progress: goalsTable.progress,
       deadline: goalsTable.deadline,
       successCriteria: goalsTable.successCriteria,
       currentStreak: goalsTable.currentStreak,
+      lastProgressResetDate: goalsTable.lastProgressResetDate,
     })
     .from(goalsTable)
     .where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "active")));

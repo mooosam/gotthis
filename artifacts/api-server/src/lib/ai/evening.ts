@@ -185,6 +185,7 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
   }
 
   const streakMilestoneMessages: string[] = [];
+  const goalCadenceMap = new Map(ctx.goals.map((g) => [g.id, g.cadence]));
 
   for (const goalUpdate of logData.goalUpdates) {
     await db
@@ -195,11 +196,15 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
       })
       .where(and(eq(goalsTable.id, goalUpdate.goalId), eq(goalsTable.userId, ctx.user.id)));
 
+    const isDaily = goalCadenceMap.get(goalUpdate.goalId) === "daily";
+    if (!isDaily) continue;
+
     const streakResult = await updateStreakForGoal(
       goalUpdate.goalId,
       ctx.user.id,
       goalUpdate.goalTitle,
       goalUpdate.percentProgress,
+      ctx.user.timezone,
     );
 
     if (streakResult) {

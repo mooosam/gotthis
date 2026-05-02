@@ -12,6 +12,7 @@ import {
 import { getTodayDate, loadFreshBudget, getCacheHitTokens } from "./usage.js";
 import type { MessageIntent } from "./classifier.js";
 import { logger } from "../logger.js";
+import { updateStreakForGoal, getDateInTimezone } from "./streaks.js";
 
 export const OFF_TOPIC_REPLY =
   "I'm your goal coach — let's focus on your targets.";
@@ -108,12 +109,12 @@ Rules:
 
   console.info("[goal-extract] Extracted updates:", JSON.stringify(updates));
 
-  const today = getTodayDate();
+  const today = getDateInTimezone(ctx.user.timezone);
 
   // Validate each extracted goalId against known goals to catch hallucinated IDs
-  const validGoalIds = new Set(ctx.goals.map((g) => g.id));
+  const goalMap = new Map(ctx.goals.map((g) => [g.id, g]));
   const validUpdates = updates.filter((u) => {
-    if (!validGoalIds.has(u.goalId)) {
+    if (!goalMap.has(u.goalId)) {
       console.warn("[goal-extract] Claude returned unknown goalId:", u.goalId, "— skipping");
       return false;
     }
@@ -121,11 +122,31 @@ Rules:
   });
 
   for (const update of validUpdates) {
+    const goalMeta = goalMap.get(update.goalId);
+    const isDaily = goalMeta?.cadence === "daily";
+
+    // Reset-on-first-interaction: stamp the reset date when first progress comes in for the day.
+    // This prevents the midnight cron from later wiping progress that was legitimately logged
+    // after midnight but before the cron fires.
+    const shouldStampReset = isDaily && goalMeta?.lastProgressResetDate !== today;
+
     console.info("[goal-extract] Writing progress:", update.goalId, update.percentProgress + "%");
     await db
       .update(goalsTable)
-      .set({ progress: update.percentProgress, lastCheckedAt: new Date() })
+      .set({
+        progress: update.percentProgress,
+        lastCheckedAt: new Date(),
+        ...(shouldStampReset ? { lastProgressResetDate: today } : {}),
+      })
       .where(and(eq(goalsTable.id, update.goalId), eq(goalsTable.userId, ctx.user.id)));
+
+    if (isDaily && update.percentProgress >= 100) {
+      try {
+        await updateStreakForGoal(update.goalId, ctx.user.id, update.goalTitle, update.percentProgress, ctx.user.timezone);
+      } catch (err) {
+        console.warn("[goal-extract] Streak update failed for goal", update.goalId, err);
+      }
+    }
   }
 
   // Use validUpdates going forward

@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startWhatsApp, sendToJid } from "./lib/whatsapp/service.js";
 import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
 import { startNewsletterCron } from "./lib/email/newsletter.js";
+import { startDailyResetCron } from "./lib/goals/daily-reset.js";
 
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
@@ -41,4 +42,5 @@ app.listen(port, (err) => {
 
   startWeeklyChartCron(sendToJid);
   startNewsletterCron();
+  startDailyResetCron();
 });
