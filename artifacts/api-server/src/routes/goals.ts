@@ -14,6 +14,35 @@ import {
 
 const router: IRouter = Router();
 
+// Verify a candidate parent goal exists, belongs to the user, and (when editing)
+// would not create a cycle with the goal being updated. Returns an error string
+// to send to the client, or null if valid.
+async function validateParent(
+  userId: string,
+  parentGoalId: string,
+  selfId: string | null,
+): Promise<string | null> {
+  if (selfId !== null && parentGoalId === selfId) {
+    return "A goal cannot be its own parent";
+  }
+  const seen = new Set<string>();
+  let cursor: string | null = parentGoalId;
+  while (cursor) {
+    if (seen.has(cursor)) return "Cycle detected in parent chain";
+    seen.add(cursor);
+    if (selfId !== null && cursor === selfId) {
+      return "Setting this parent would create a cycle";
+    }
+    const [parent] = await db
+      .select({ id: goalsTable.id, parentGoalId: goalsTable.parentGoalId })
+      .from(goalsTable)
+      .where(and(eq(goalsTable.id, cursor), eq(goalsTable.userId, userId)));
+    if (!parent) return "Parent goal not found";
+    cursor = parent.parentGoalId;
+  }
+  return null;
+}
+
 router.get("/goals", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
 
@@ -55,6 +84,7 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
     goalType,
     targetValue,
     targetUnit,
+    parentGoalId,
   } = parsed.data;
 
   const resolvedType = goalType ?? "habit";
@@ -64,11 +94,20 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
       ? "ongoing"
       : (cadence ?? "daily");
 
+  if (parentGoalId) {
+    const err = await validateParent(userId, parentGoalId, null);
+    if (err) {
+      res.status(400).json({ error: err });
+      return;
+    }
+  }
+
   const [goal] = await db
     .insert(goalsTable)
     .values({
       id: nanoid(),
       userId,
+      parentGoalId: parentGoalId ?? null,
       title,
       description: description ?? null,
       category: category ?? "general",
@@ -135,6 +174,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     targetValue,
     targetUnit,
     currentValue,
+    parentGoalId,
   } = bodyParsed.data;
 
   // Load existing goal first so we can resolve effective fields when only a subset is patched.
@@ -148,6 +188,15 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  // Validate parent change before making any writes.
+  if (parentGoalId !== undefined && parentGoalId !== null) {
+    const err = await validateParent(userId, parentGoalId, paramsParsed.data.id);
+    if (err) {
+      res.status(400).json({ error: err });
+      return;
+    }
+  }
+
   const updates: Partial<typeof goalsTable.$inferInsert> = {};
   if (title !== undefined) updates.title = title;
   if (description !== undefined) updates.description = description;
@@ -159,6 +208,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (targetValue !== undefined) updates.targetValue = targetValue;
   if (targetUnit !== undefined) updates.targetUnit = targetUnit;
   if (currentValue !== undefined) updates.currentValue = currentValue;
+  if (parentGoalId !== undefined) updates.parentGoalId = parentGoalId;
 
   // Resolve effective values to enforce invariants and derive progress consistently.
   const effectiveType = goalType ?? existing.goalType;

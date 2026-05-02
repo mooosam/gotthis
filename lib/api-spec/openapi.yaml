@@ -262,6 +262,142 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /goals/{id}/pause:
+    post:
+      operationId: pauseGoal
+      tags: [goals]
+      summary: Pause a goal (edgeless mode — preserves streak, halts decay)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PauseGoalBody"
+      responses:
+        "200":
+          description: Paused goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goals/{id}/resume:
+    post:
+      operationId: resumeGoal
+      tags: [goals]
+      summary: Resume a paused goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resumed goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goals/{id}/roadmap:
+    post:
+      operationId: generateRoadmap
+      tags: [goals]
+      summary: Use Claude to suggest 3-7 milestone steps for a goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateRoadmapBody"
+      responses:
+        "200":
+          description: Roadmap suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateRoadmapResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goals/{id}/forecast:
+    get:
+      operationId: getGoalForecast
+      tags: [goals]
+      summary: Predict finish date from recent velocity (target/average goals)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Forecast
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForecastResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /skip-credits/use:
     post:
       operationId: useSkipCredit
@@ -654,6 +790,8 @@ components:
           type: string
         userId:
           type: string
+        parentGoalId:
+          type: ["string", "null"]
         title:
           type: string
         description:
@@ -686,6 +824,11 @@ components:
           type: ["string", "null"]
           description: "yyyy-MM-dd date of the last streak activity (in user's timezone)"
         shareToken:
+          type: ["string", "null"]
+        pausedAt:
+          type: ["string", "null"]
+          description: "ISO timestamp when this goal was paused (edgeless mode); null = active"
+        pauseReason:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -729,6 +872,8 @@ components:
           type: integer
         targetUnit:
           type: string
+        parentGoalId:
+          type: ["string", "null"]
       required:
         - title
 
@@ -761,6 +906,63 @@ components:
           type: string
         currentValue:
           type: integer
+        parentGoalId:
+          type: ["string", "null"]
+
+    PauseGoalBody:
+      type: object
+      properties:
+        reason:
+          type: string
+
+    RoadmapSuggestion:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        order:
+          type: integer
+      required:
+        - title
+        - order
+
+    GenerateRoadmapResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoadmapSuggestion"
+      required:
+        - suggestions
+
+    GenerateRoadmapBody:
+      type: object
+      properties:
+        commit:
+          type: boolean
+          description: "If true, persist the suggestions as milestones on this goal"
+
+    ForecastResponse:
+      type: object
+      properties:
+        eligible:
+          type: boolean
+        predictedFinishDate:
+          type: ["string", "null"]
+          description: "yyyy-MM-dd predicted completion date based on linear velocity"
+        velocityPerDay:
+          type: ["number", "null"]
+        confidence:
+          type: ["string", "null"]
+          enum: [low, medium, high, null]
+        reason:
+          type: ["string", "null"]
+          description: "Explanation when not eligible"
+      required:
+        - eligible
 
     UseSkipCreditBody:
       type: object

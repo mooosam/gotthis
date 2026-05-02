@@ -91,6 +91,7 @@ export const ListGoalsQueryParams = zod.object({
 export const ListGoalsResponseItem = zod.object({
   id: zod.string(),
   userId: zod.string(),
+  parentGoalId: zod.string().nullish(),
   title: zod.string(),
   description: zod.string().nullish(),
   category: zod.string(),
@@ -112,6 +113,13 @@ export const ListGoalsResponseItem = zod.object({
       "yyyy-MM-dd date of the last streak activity (in user's timezone)",
     ),
   shareToken: zod.string().nullish(),
+  pausedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp when this goal was paused (edgeless mode); null = active",
+    ),
+  pauseReason: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -130,6 +138,7 @@ export const CreateGoalBody = zod.object({
   goalType: zod.enum(["habit", "target", "average", "milestone"]).optional(),
   targetValue: zod.number().optional(),
   targetUnit: zod.string().optional(),
+  parentGoalId: zod.string().nullish(),
 });
 
 /**
@@ -142,6 +151,7 @@ export const GetGoalParams = zod.object({
 export const GetGoalResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
+  parentGoalId: zod.string().nullish(),
   title: zod.string(),
   description: zod.string().nullish(),
   category: zod.string(),
@@ -163,6 +173,13 @@ export const GetGoalResponse = zod.object({
       "yyyy-MM-dd date of the last streak activity (in user's timezone)",
     ),
   shareToken: zod.string().nullish(),
+  pausedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp when this goal was paused (edgeless mode); null = active",
+    ),
+  pauseReason: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -187,11 +204,13 @@ export const UpdateGoalBody = zod.object({
   targetValue: zod.number().optional(),
   targetUnit: zod.string().optional(),
   currentValue: zod.number().optional(),
+  parentGoalId: zod.string().nullish(),
 });
 
 export const UpdateGoalResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
+  parentGoalId: zod.string().nullish(),
   title: zod.string(),
   description: zod.string().nullish(),
   category: zod.string(),
@@ -213,6 +232,13 @@ export const UpdateGoalResponse = zod.object({
       "yyyy-MM-dd date of the last streak activity (in user's timezone)",
     ),
   shareToken: zod.string().nullish(),
+  pausedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp when this goal was paused (edgeless mode); null = active",
+    ),
+  pauseReason: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -222,6 +248,145 @@ export const UpdateGoalResponse = zod.object({
  */
 export const DeleteGoalParams = zod.object({
   id: zod.coerce.string(),
+});
+
+/**
+ * @summary Pause a goal (edgeless mode — preserves streak, halts decay)
+ */
+export const PauseGoalParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const PauseGoalBody = zod.object({
+  reason: zod.string().optional(),
+});
+
+export const PauseGoalResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  parentGoalId: zod.string().nullish(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  category: zod.string(),
+  deadline: zod.string().nullish(),
+  status: zod.string(),
+  progress: zod.number(),
+  cadence: zod.string(),
+  goalType: zod.string(),
+  targetValue: zod.number().nullish(),
+  targetUnit: zod.string().nullish(),
+  currentValue: zod.number(),
+  successCriteria: zod.string().nullish(),
+  currentStreak: zod.number(),
+  longestStreak: zod.number(),
+  lastStreakDate: zod
+    .string()
+    .nullish()
+    .describe(
+      "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+    ),
+  shareToken: zod.string().nullish(),
+  pausedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp when this goal was paused (edgeless mode); null = active",
+    ),
+  pauseReason: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Resume a paused goal
+ */
+export const ResumeGoalParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ResumeGoalResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  parentGoalId: zod.string().nullish(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  category: zod.string(),
+  deadline: zod.string().nullish(),
+  status: zod.string(),
+  progress: zod.number(),
+  cadence: zod.string(),
+  goalType: zod.string(),
+  targetValue: zod.number().nullish(),
+  targetUnit: zod.string().nullish(),
+  currentValue: zod.number(),
+  successCriteria: zod.string().nullish(),
+  currentStreak: zod.number(),
+  longestStreak: zod.number(),
+  lastStreakDate: zod
+    .string()
+    .nullish()
+    .describe(
+      "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+    ),
+  shareToken: zod.string().nullish(),
+  pausedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp when this goal was paused (edgeless mode); null = active",
+    ),
+  pauseReason: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Use Claude to suggest 3-7 milestone steps for a goal
+ */
+export const GenerateRoadmapParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GenerateRoadmapBody = zod.object({
+  commit: zod
+    .boolean()
+    .optional()
+    .describe("If true, persist the suggestions as milestones on this goal"),
+});
+
+export const GenerateRoadmapResponse = zod.object({
+  suggestions: zod.array(
+    zod.object({
+      title: zod.string(),
+      description: zod.string().optional(),
+      order: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Predict finish date from recent velocity (target/average goals)
+ */
+export const GetGoalForecastParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetGoalForecastResponse = zod.object({
+  eligible: zod.boolean(),
+  predictedFinishDate: zod
+    .string()
+    .nullish()
+    .describe("yyyy-MM-dd predicted completion date based on linear velocity"),
+  velocityPerDay: zod.number().nullish(),
+  confidence: zod
+    .union([
+      zod.literal("low"),
+      zod.literal("medium"),
+      zod.literal("high"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  reason: zod.string().nullish().describe("Explanation when not eligible"),
 });
 
 /**
@@ -356,6 +521,7 @@ export const GetDashboardStatsResponse = zod.object({
     zod.object({
       id: zod.string(),
       userId: zod.string(),
+      parentGoalId: zod.string().nullish(),
       title: zod.string(),
       description: zod.string().nullish(),
       category: zod.string(),
@@ -377,6 +543,13 @@ export const GetDashboardStatsResponse = zod.object({
           "yyyy-MM-dd date of the last streak activity (in user's timezone)",
         ),
       shareToken: zod.string().nullish(),
+      pausedAt: zod
+        .string()
+        .nullish()
+        .describe(
+          "ISO timestamp when this goal was paused (edgeless mode); null = active",
+        ),
+      pauseReason: zod.string().nullish(),
       createdAt: zod.string(),
       updatedAt: zod.string(),
     }),

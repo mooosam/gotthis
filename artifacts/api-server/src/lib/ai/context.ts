@@ -6,6 +6,7 @@ export interface UserContext {
   user: User;
   goals: Array<{
     id: string;
+    parentGoalId: string | null;
     title: string;
     category: string;
     status: string;
@@ -19,6 +20,7 @@ export interface UserContext {
     successCriteria: string | null;
     currentStreak: number;
     lastProgressResetDate: string | null;
+    pausedAt: Date | null;
   }>;
   memorySummary: Record<string, unknown> | null;
   recentLogs: Array<{
@@ -41,6 +43,7 @@ export async function assembleContext(userId: string): Promise<UserContext> {
   const goals = await db
     .select({
       id: goalsTable.id,
+      parentGoalId: goalsTable.parentGoalId,
       title: goalsTable.title,
       category: goalsTable.category,
       status: goalsTable.status,
@@ -54,6 +57,7 @@ export async function assembleContext(userId: string): Promise<UserContext> {
       successCriteria: goalsTable.successCriteria,
       currentStreak: goalsTable.currentStreak,
       lastProgressResetDate: goalsTable.lastProgressResetDate,
+      pausedAt: goalsTable.pausedAt,
     })
     .from(goalsTable)
     .where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "active")));
@@ -129,12 +133,19 @@ export function buildStaticContextBlock(ctx: UserContext): string {
 
   if (ctx.goals.length > 0) {
     lines.push("\n=== ACTIVE GOALS ===");
+    const titlesById = new Map(ctx.goals.map((g) => [g.id, g.title]));
     for (const g of ctx.goals) {
       const type = g.goalType ?? "habit";
       const isDaily = g.cadence !== "ongoing";
       lines.push(`[${g.id}] ${g.title}`);
       lines.push(`  Category: ${g.category}`);
       lines.push(`  Type: ${type}`);
+      if (g.parentGoalId && titlesById.has(g.parentGoalId)) {
+        lines.push(`  Parent goal: ${titlesById.get(g.parentGoalId)} (${g.parentGoalId})`);
+      }
+      if (g.pausedAt) {
+        lines.push(`  Status: PAUSED — streak preserved, do not chase progress until resumed`);
+      }
       lines.push(`  Cadence: ${isDaily ? "daily (resets each morning)" : "ongoing (accumulates over time)"}`);
       const pct = g.progress ?? 0;
       if (type === "target" && g.targetValue) {

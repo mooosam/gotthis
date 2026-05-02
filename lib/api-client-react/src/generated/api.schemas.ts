@@ -41,6 +41,8 @@ export interface UpdateProfileBody {
 export interface Goal {
   id: string;
   userId: string;
+  /** @nullable */
+  parentGoalId?: string | null;
   title: string;
   /** @nullable */
   description?: string | null;
@@ -67,6 +69,13 @@ export interface Goal {
   lastStreakDate?: string | null;
   /** @nullable */
   shareToken?: string | null;
+  /**
+   * ISO timestamp when this goal was paused (edgeless mode); null = active
+   * @nullable
+   */
+  pausedAt?: string | null;
+  /** @nullable */
+  pauseReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +108,8 @@ export interface CreateGoalBody {
   goalType?: CreateGoalBodyGoalType;
   targetValue?: number;
   targetUnit?: string;
+  /** @nullable */
+  parentGoalId?: string | null;
 }
 
 export type UpdateGoalBodyCadence =
@@ -132,6 +143,58 @@ export interface UpdateGoalBody {
   targetValue?: number;
   targetUnit?: string;
   currentValue?: number;
+  /** @nullable */
+  parentGoalId?: string | null;
+}
+
+export interface PauseGoalBody {
+  reason?: string;
+}
+
+export interface RoadmapSuggestion {
+  title: string;
+  description?: string;
+  order: number;
+}
+
+export interface GenerateRoadmapResponse {
+  suggestions: RoadmapSuggestion[];
+}
+
+export interface GenerateRoadmapBody {
+  /** If true, persist the suggestions as milestones on this goal */
+  commit?: boolean;
+}
+
+/**
+ * @nullable
+ */
+export type ForecastResponseConfidence =
+  | (typeof ForecastResponseConfidence)[keyof typeof ForecastResponseConfidence]
+  | null;
+
+export const ForecastResponseConfidence = {
+  low: "low",
+  medium: "medium",
+  high: "high",
+} as const;
+
+export interface ForecastResponse {
+  eligible: boolean;
+  /**
+   * yyyy-MM-dd predicted completion date based on linear velocity
+   * @nullable
+   */
+  predictedFinishDate?: string | null;
+  /** @nullable */
+  velocityPerDay?: number | null;
+  /** @nullable */
+  confidence?: ForecastResponseConfidence;
+  /**
+   * Explanation when not eligible
+   * @nullable
+   */
+  reason?: string | null;
 }
 
 export interface UseSkipCreditBody {

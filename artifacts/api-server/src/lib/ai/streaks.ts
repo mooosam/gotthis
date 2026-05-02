@@ -49,6 +49,9 @@ export async function updateStreakForGoal(
 
   if (!goal) return null;
 
+  // Edgeless mode: paused goals preserve their current streak — we neither advance nor reset.
+  if (goal.pausedAt) return null;
+
   if (goal.lastStreakDate === today) {
     return null;
   }

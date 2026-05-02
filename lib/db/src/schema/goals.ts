@@ -11,6 +11,7 @@ import { z } from "zod/v4";
 export const goalsTable = pgTable("goals", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
+  parentGoalId: text("parent_goal_id"),
   title: text("title").notNull(),
   description: text("description"),
   category: text("category").notNull().default("general"),
@@ -30,6 +31,8 @@ export const goalsTable = pgTable("goals", {
   shareToken: text("share_token"),
   lastProgressResetDate: text("last_progress_reset_date"),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  pausedAt: timestamp("paused_at", { withTimezone: true }),
+  pauseReason: text("pause_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

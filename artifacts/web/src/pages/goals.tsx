@@ -87,7 +87,10 @@ const goalSchema = z.object({
   goalType: z.enum(["habit", "target", "average", "milestone"]),
   targetValue: z.number().int().nonnegative().optional(),
   targetUnit: z.string().optional(),
+  parentGoalId: z.string().optional(),
 });
+
+const NONE_PARENT = "__none__";
 
 const editGoalSchema = goalSchema.extend({
   progress: z.number().min(0).max(100),
@@ -112,6 +115,7 @@ interface GoalRow {
   targetValue: number | null;
   targetUnit: string | null;
   currentValue: number;
+  parentGoalId: string | null;
 }
 
 const GOAL_TYPE_META: Record<
@@ -168,6 +172,7 @@ export default function GoalsPage() {
       goalType: "habit",
       targetValue: undefined,
       targetUnit: "",
+      parentGoalId: NONE_PARENT,
     },
   });
 
@@ -185,6 +190,7 @@ export default function GoalsPage() {
       targetUnit: "",
       progress: 0,
       currentValue: 0,
+      parentGoalId: NONE_PARENT,
     },
   });
 
@@ -199,6 +205,8 @@ export default function GoalsPage() {
   const onCreateSubmit = async (data: GoalValues) => {
     try {
       const isQuant = data.goalType === "target" || data.goalType === "average";
+      const parentGoalId =
+        data.parentGoalId && data.parentGoalId !== NONE_PARENT ? data.parentGoalId : undefined;
       await createGoal.mutateAsync({
         data: {
           title: data.title,
@@ -210,6 +218,7 @@ export default function GoalsPage() {
           goalType: data.goalType,
           targetValue: isQuant && data.targetValue ? data.targetValue : undefined,
           targetUnit: isQuant && data.targetUnit ? data.targetUnit : undefined,
+          parentGoalId,
         },
       });
       invalidateGoals();
@@ -240,6 +249,7 @@ export default function GoalsPage() {
       targetUnit: goal.targetUnit ?? "",
       progress: goal.progress,
       currentValue: goal.currentValue ?? 0,
+      parentGoalId: goal.parentGoalId ?? NONE_PARENT,
     });
   };
 
@@ -247,6 +257,8 @@ export default function GoalsPage() {
     if (!editTarget) return;
     try {
       const isQuant = data.goalType === "target" || data.goalType === "average";
+      const parentGoalId =
+        data.parentGoalId && data.parentGoalId !== NONE_PARENT ? data.parentGoalId : null;
       await updateGoal.mutateAsync({
         id: editTarget.id,
         data: {
@@ -261,6 +273,7 @@ export default function GoalsPage() {
           ...(isQuant && data.targetUnit ? { targetUnit: data.targetUnit } : {}),
           ...(isQuant ? { currentValue: data.currentValue ?? 0 } : {}),
           ...(isQuant ? {} : { progress: data.progress }),
+          parentGoalId,
         },
       });
       invalidateGoals();
@@ -530,6 +543,34 @@ export default function GoalsPage() {
                       )}
                     />
                   )}
+
+                  <FormField
+                    control={createForm.control}
+                    name="parentGoalId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Parent goal (Optional)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? NONE_PARENT}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-parent-goal">
+                              <SelectValue placeholder="No parent" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={NONE_PARENT}>No parent — top-level goal</SelectItem>
+                            {(goals ?? [])
+                              .filter((g) => g.status === "active")
+                              .map((g) => (
+                                <SelectItem key={g.id} value={g.id}>
+                                  {g.title}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <div className="flex justify-end pt-4">
                     <Button
@@ -982,6 +1023,34 @@ export default function GoalsPage() {
                   )}
                 />
               )}
+
+              <FormField
+                control={editForm.control}
+                name="parentGoalId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parent goal (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? NONE_PARENT}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-parent-goal">
+                          <SelectValue placeholder="No parent" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={NONE_PARENT}>No parent — top-level goal</SelectItem>
+                        {(goals ?? [])
+                          .filter((g) => g.status === "active" && g.id !== editTarget?.id)
+                          .map((g) => (
+                            <SelectItem key={g.id} value={g.id}>
+                              {g.title}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button

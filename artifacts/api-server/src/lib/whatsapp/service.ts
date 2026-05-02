@@ -12,6 +12,7 @@ import { hashPhone } from "../phone.js";
 import { processMessage } from "../ai/processor.js";
 import { createReviewMagicLink, getBaseUrl } from "./magic-link.js";
 import { checkWhatsAppRateLimit } from "./rate-limit.js";
+import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
 import type { User } from "@workspace/db";
 
@@ -106,6 +107,14 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
   if (!rateCheck.allowed) {
     await sendTracked(jid, rateCheck.reason ?? "Daily message limit reached.");
     return;
+  }
+
+  // Adaptive nudging: record this inbound message's local hour so we can later
+  // pick the user's preferred push time. Errors here must not block the reply.
+  try {
+    await recordInboundEngagement(user.id);
+  } catch (engagementErr) {
+    logger.warn({ err: engagementErr }, "Failed to record engagement sample");
   }
 
   const result = await processMessage(user.id, text);

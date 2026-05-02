@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
-import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon, Circle, Plus, Share2, Repeat, TrendingUp, Activity, Flag, SkipForward } from "lucide-react";
+import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon, Circle, Plus, Share2, Repeat, TrendingUp, Activity, Flag, SkipForward, Pause, Play, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -122,6 +122,22 @@ export default function GoalDetailPage({ id }: { id: string }) {
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [addingMilestone, setAddingMilestone] = useState(false);
   const [showAddMilestone, setShowAddMilestone] = useState(false);
+
+  const [isPausing, setIsPausing] = useState(false);
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [pauseReason, setPauseReason] = useState("");
+
+  const [roadmapSteps, setRoadmapSteps] = useState<Array<{ title: string; description?: string; orderIndex: number }>>([]);
+  const [roadmapLoading, setRoadmapLoading] = useState(false);
+  const [roadmapCommitting, setRoadmapCommitting] = useState(false);
+
+  const [forecast, setForecast] = useState<{
+    predictedFinishDate: string | null;
+    confidence: "low" | "medium" | "high";
+    averageDailyDelta: number;
+    samples: number;
+    message: string;
+  } | null>(null);
 
   const fetchMilestones = useCallback(async () => {
     if (!id) return;
@@ -286,6 +302,100 @@ export default function GoalDetailPage({ id }: { id: string }) {
     }
   }, [goal]);
 
+  const handlePause = async () => {
+    setIsPausing(true);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/goals/${id}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pauseReason.trim() ? { reason: pauseReason.trim() } : {}),
+      });
+      if (r.ok) {
+        queryClient.invalidateQueries({ queryKey: getGetGoalQueryKey(id) });
+        toast({ title: "Goal paused", description: "Streak preserved while paused." });
+        setPauseDialogOpen(false);
+        setPauseReason("");
+      } else {
+        toast({ title: "Failed to pause goal", variant: "destructive" });
+      }
+    } finally {
+      setIsPausing(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setIsPausing(true);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/goals/${id}/resume`, { method: "POST" });
+      if (r.ok) {
+        queryClient.invalidateQueries({ queryKey: getGetGoalQueryKey(id) });
+        toast({ title: "Goal resumed" });
+      } else {
+        toast({ title: "Failed to resume goal", variant: "destructive" });
+      }
+    } finally {
+      setIsPausing(false);
+    }
+  };
+
+  const handleGenerateRoadmap = async () => {
+    setRoadmapLoading(true);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/goals/${id}/roadmap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commit: false }),
+      });
+      const data = await r.json();
+      if (r.ok && Array.isArray(data.steps)) {
+        setRoadmapSteps(data.steps);
+      } else {
+        toast({ title: "Failed to generate roadmap", description: data.error, variant: "destructive" });
+      }
+    } finally {
+      setRoadmapLoading(false);
+    }
+  };
+
+  const handleCommitRoadmap = async () => {
+    if (roadmapSteps.length === 0) return;
+    setRoadmapCommitting(true);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/goals/${id}/roadmap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commit: true, steps: roadmapSteps }),
+      });
+      if (r.ok) {
+        toast({ title: "Roadmap created", description: `${roadmapSteps.length} milestones added.` });
+        setRoadmapSteps([]);
+        await fetchMilestones();
+      } else {
+        toast({ title: "Failed to create milestones", variant: "destructive" });
+      }
+    } finally {
+      setRoadmapCommitting(false);
+    }
+  };
+
+  const fetchForecast = useCallback(async () => {
+    if (!goal) return;
+    if (goal.goalType !== "target" && goal.goalType !== "average") return;
+    try {
+      const r = await apiFetch(`${API_BASE}/api/goals/${id}/forecast`);
+      if (r.ok) {
+        const data = await r.json();
+        setForecast(data);
+      }
+    } catch {
+      // ignore
+    }
+  }, [goal, id]);
+
+  useEffect(() => {
+    fetchForecast();
+  }, [fetchForecast]);
+
   const handleUseSkipCredit = async () => {
     if (!goal) return;
     setIsUsingSkipCredit(true);
@@ -426,6 +536,18 @@ export default function GoalDetailPage({ id }: { id: string }) {
                 <TypeIcon className="h-3 w-3" />
                 {typeMeta.label}
               </Badge>
+              {goal.pausedAt && (
+                <Badge variant="outline" className="font-normal gap-1 border-amber-500/40 text-amber-600 dark:text-amber-400" data-testid="badge-paused">
+                  <Pause className="h-3 w-3" />
+                  Paused
+                </Badge>
+              )}
+              {forecast?.predictedFinishDate && (
+                <Badge variant="outline" className="font-normal gap-1" data-testid="badge-forecast">
+                  <TrendingUp className="h-3 w-3" />
+                  Predicted finish: {format(new Date(forecast.predictedFinishDate), "MMM d, yyyy")}
+                </Badge>
+              )}
             </div>
             <h1 className="text-3xl md:text-4xl font-serif font-bold tracking-tight text-foreground" data-testid="goal-title">
               {goal.title}
@@ -784,6 +906,66 @@ export default function GoalDetailPage({ id }: { id: string }) {
                       </Button>
                     </div>
                   )}
+                  <div className="pt-2 border-t border-border/40">
+                    {goal.pausedAt ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        disabled={isPausing}
+                        onClick={handleResume}
+                        data-testid="button-resume-goal"
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        {isPausing ? "Resuming..." : "Resume goal"}
+                      </Button>
+                    ) : (
+                      <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            data-testid="button-pause-goal"
+                          >
+                            <Pause className="mr-2 h-4 w-4" />
+                            Pause goal (preserve streak)
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[420px]">
+                          <DialogHeader>
+                            <DialogTitle className="font-serif">Pause this goal</DialogTitle>
+                            <DialogDescription>
+                              Your streak will be preserved. The morning ritual will not chase
+                              progress on this goal until you resume it.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <Textarea
+                            value={pauseReason}
+                            onChange={(e) => setPauseReason(e.target.value)}
+                            placeholder="Why are you pausing? (optional)"
+                            className="resize-none"
+                            data-testid="textarea-pause-reason"
+                          />
+                          <DialogFooter>
+                            <Button
+                              variant="outline"
+                              onClick={() => setPauseDialogOpen(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={handlePause}
+                              disabled={isPausing}
+                              data-testid="button-confirm-pause"
+                            >
+                              {isPausing ? "Pausing..." : "Pause goal"}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
                   <div className="flex items-center gap-4">
                     <div className="bg-muted p-3 rounded-full">
                       <CheckCircle2 className="h-6 w-6 text-muted-foreground" />
@@ -807,6 +989,95 @@ export default function GoalDetailPage({ id }: { id: string }) {
                 </div>
               </CardContent>
             </Card>
+
+            <Card className="border-border/40 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="font-serif text-base flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  AI Roadmap
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Break this goal into 3-7 milestone steps with Claude.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {roadmapSteps.length === 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={handleGenerateRoadmap}
+                    disabled={roadmapLoading}
+                    data-testid="button-generate-roadmap"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {roadmapLoading ? "Generating..." : "Generate roadmap"}
+                  </Button>
+                ) : (
+                  <>
+                    <ol className="space-y-2 text-sm">
+                      {roadmapSteps.map((step, i) => (
+                        <li
+                          key={`roadmap-${i}`}
+                          className="border border-border/40 rounded-md p-2"
+                          data-testid={`roadmap-step-${i}`}
+                        >
+                          <div className="font-medium leading-snug">
+                            <span className="text-xs text-muted-foreground mr-1">
+                              Step {step.orderIndex ?? i + 1}.
+                            </span>
+                            {step.title}
+                          </div>
+                          {step.description && (
+                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                              {step.description}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setRoadmapSteps([])}
+                        disabled={roadmapCommitting}
+                      >
+                        Discard
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={handleCommitRoadmap}
+                        disabled={roadmapCommitting}
+                        data-testid="button-commit-roadmap"
+                      >
+                        {roadmapCommitting ? "Saving..." : "Create all"}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {forecast && forecast.message && (
+              <Card className="border-border/40 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                    Forecast
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <p className="text-sm leading-relaxed" data-testid="text-forecast-message">
+                    {forecast.message}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Confidence: {forecast.confidence} ({forecast.samples} data points)
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {goal.successCriteria && (
               <Card className="border-border/40 shadow-sm bg-primary/5 border-primary/20">

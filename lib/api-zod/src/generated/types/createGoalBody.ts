@@ -18,4 +18,6 @@ export interface CreateGoalBody {
   goalType?: CreateGoalBodyGoalType;
   targetValue?: number;
   targetUnit?: string;
+  /** @nullable */
+  parentGoalId?: string | null;
 }

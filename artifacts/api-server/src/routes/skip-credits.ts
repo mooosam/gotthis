@@ -97,6 +97,7 @@ router.post("/skip-credits/use", requireAuth, async (req, res): Promise<void> =>
           eq(goalsTable.userId, userId),
           eq(goalsTable.goalType, "habit"),
           eq(goalsTable.cadence, "daily"),
+          sql`${goalsTable.pausedAt} IS NULL`,
           sql`(${goalsTable.lastStreakDate} IS NULL OR ${goalsTable.lastStreakDate} <> ${today})`,
         ),
       )
@@ -125,9 +126,10 @@ router.post("/skip-credits/use", requireAuth, async (req, res): Promise<void> =>
   }
 
   if (result.kind === "ineligible") {
-    res
-      .status(400)
-      .json({ error: "Goal not found, not a daily habit, or streak already preserved today" });
+    res.status(400).json({
+      error:
+        "Goal not found, not a daily habit, paused, or streak already preserved today",
+    });
     return;
   }
 

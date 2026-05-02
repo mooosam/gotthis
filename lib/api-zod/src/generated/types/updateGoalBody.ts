@@ -21,4 +21,6 @@ export interface UpdateGoalBody {
   targetValue?: number;
   targetUnit?: string;
   currentValue?: number;
+  /** @nullable */
+  parentGoalId?: string | null;
 }

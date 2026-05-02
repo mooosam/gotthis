@@ -4,6 +4,7 @@ import {
   integer,
   boolean,
   timestamp,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -30,6 +31,9 @@ export const usersTable = pgTable("users", {
   monthlySkipCredits: integer("monthly_skip_credits").notNull().default(4),
   skipCreditsUsed: integer("skip_credits_used").notNull().default(0),
   skipCreditsResetAt: timestamp("skip_credits_reset_at", { withTimezone: true }),
+  preferredPushHour: integer("preferred_push_hour").notNull().default(8),
+  engagementSamples: jsonb("engagement_samples").$type<Array<{ hour: number; responded: boolean; ts: string }>>().notNull().default([]),
+  lastWeeklyInsightAt: timestamp("last_weekly_insight_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -23,6 +23,9 @@ import type {
   DailyLog,
   DashboardStats,
   ErrorResponse,
+  ForecastResponse,
+  GenerateRoadmapBody,
+  GenerateRoadmapResponse,
   Goal,
   HealthStatus,
   ListDailyLogsParams,
@@ -30,6 +33,7 @@ import type {
   MagicLinkResolved,
   MagicLinkResponse,
   MemorySummary,
+  PauseGoalBody,
   SkipCreditResponse,
   SkipCreditStatus,
   UpdateDailyLogBody,
@@ -791,6 +795,351 @@ export const useDeleteGoal = <
 > => {
   return useMutation(getDeleteGoalMutationOptions(options));
 };
+
+/**
+ * @summary Pause a goal (edgeless mode — preserves streak, halts decay)
+ */
+export const getPauseGoalUrl = (id: string) => {
+  return `/api/goals/${id}/pause`;
+};
+
+export const pauseGoal = async (
+  id: string,
+  pauseGoalBody?: PauseGoalBody,
+  options?: RequestInit,
+): Promise<Goal> => {
+  return customFetch<Goal>(getPauseGoalUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(pauseGoalBody),
+  });
+};
+
+export const getPauseGoalMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof pauseGoal>>,
+    TError,
+    { id: string; data: BodyType<PauseGoalBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof pauseGoal>>,
+  TError,
+  { id: string; data: BodyType<PauseGoalBody> },
+  TContext
+> => {
+  const mutationKey = ["pauseGoal"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof pauseGoal>>,
+    { id: string; data: BodyType<PauseGoalBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return pauseGoal(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PauseGoalMutationResult = NonNullable<
+  Awaited<ReturnType<typeof pauseGoal>>
+>;
+export type PauseGoalMutationBody = BodyType<PauseGoalBody>;
+export type PauseGoalMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Pause a goal (edgeless mode — preserves streak, halts decay)
+ */
+export const usePauseGoal = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof pauseGoal>>,
+    TError,
+    { id: string; data: BodyType<PauseGoalBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof pauseGoal>>,
+  TError,
+  { id: string; data: BodyType<PauseGoalBody> },
+  TContext
+> => {
+  return useMutation(getPauseGoalMutationOptions(options));
+};
+
+/**
+ * @summary Resume a paused goal
+ */
+export const getResumeGoalUrl = (id: string) => {
+  return `/api/goals/${id}/resume`;
+};
+
+export const resumeGoal = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Goal> => {
+  return customFetch<Goal>(getResumeGoalUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getResumeGoalMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resumeGoal>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resumeGoal>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["resumeGoal"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resumeGoal>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return resumeGoal(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResumeGoalMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resumeGoal>>
+>;
+
+export type ResumeGoalMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Resume a paused goal
+ */
+export const useResumeGoal = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resumeGoal>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resumeGoal>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getResumeGoalMutationOptions(options));
+};
+
+/**
+ * @summary Use Claude to suggest 3-7 milestone steps for a goal
+ */
+export const getGenerateRoadmapUrl = (id: string) => {
+  return `/api/goals/${id}/roadmap`;
+};
+
+export const generateRoadmap = async (
+  id: string,
+  generateRoadmapBody?: GenerateRoadmapBody,
+  options?: RequestInit,
+): Promise<GenerateRoadmapResponse> => {
+  return customFetch<GenerateRoadmapResponse>(getGenerateRoadmapUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(generateRoadmapBody),
+  });
+};
+
+export const getGenerateRoadmapMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateRoadmap>>,
+    TError,
+    { id: string; data: BodyType<GenerateRoadmapBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateRoadmap>>,
+  TError,
+  { id: string; data: BodyType<GenerateRoadmapBody> },
+  TContext
+> => {
+  const mutationKey = ["generateRoadmap"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateRoadmap>>,
+    { id: string; data: BodyType<GenerateRoadmapBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return generateRoadmap(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateRoadmapMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateRoadmap>>
+>;
+export type GenerateRoadmapMutationBody = BodyType<GenerateRoadmapBody>;
+export type GenerateRoadmapMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Use Claude to suggest 3-7 milestone steps for a goal
+ */
+export const useGenerateRoadmap = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateRoadmap>>,
+    TError,
+    { id: string; data: BodyType<GenerateRoadmapBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateRoadmap>>,
+  TError,
+  { id: string; data: BodyType<GenerateRoadmapBody> },
+  TContext
+> => {
+  return useMutation(getGenerateRoadmapMutationOptions(options));
+};
+
+/**
+ * @summary Predict finish date from recent velocity (target/average goals)
+ */
+export const getGetGoalForecastUrl = (id: string) => {
+  return `/api/goals/${id}/forecast`;
+};
+
+export const getGoalForecast = async (
+  id: string,
+  options?: RequestInit,
+): Promise<ForecastResponse> => {
+  return customFetch<ForecastResponse>(getGetGoalForecastUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetGoalForecastQueryKey = (id: string) => {
+  return [`/api/goals/${id}/forecast`] as const;
+};
+
+export const getGetGoalForecastQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGoalForecast>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGoalForecast>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetGoalForecastQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getGoalForecast>>> = ({
+    signal,
+  }) => getGoalForecast(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGoalForecast>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGoalForecastQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGoalForecast>>
+>;
+export type GetGoalForecastQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Predict finish date from recent velocity (target/average goals)
+ */
+
+export function useGetGoalForecast<
+  TData = Awaited<ReturnType<typeof getGoalForecast>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGoalForecast>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGoalForecastQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Use a skip credit to preserve a goal's streak for today

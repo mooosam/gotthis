@@ -9,6 +9,8 @@
 export interface Goal {
   id: string;
   userId: string;
+  /** @nullable */
+  parentGoalId?: string | null;
   title: string;
   /** @nullable */
   description?: string | null;
@@ -35,6 +37,13 @@ export interface Goal {
   lastStreakDate?: string | null;
   /** @nullable */
   shareToken?: string | null;
+  /**
+   * ISO timestamp when this goal was paused (edgeless mode); null = active
+   * @nullable
+   */
+  pausedAt?: string | null;
+  /** @nullable */
+  pauseReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
