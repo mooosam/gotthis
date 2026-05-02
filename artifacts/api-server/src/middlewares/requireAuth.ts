@@ -1,11 +1,24 @@
-import { getAuth } from "@clerk/express";
+import { getAuth, clerkClient } from "@clerk/express";
 import type { Request, Response, NextFunction } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { logger } from "../lib/logger.js";
 
 const ADMIN_BOOTSTRAP_EMAIL = (process.env.ADMIN_BOOTSTRAP_EMAIL ?? "")
   .trim()
   .toLowerCase();
+
+async function fetchClerkEmail(clerkId: string): Promise<string> {
+  try {
+    const u = await clerkClient.users.getUser(clerkId);
+    const primaryId = u.primaryEmailAddressId;
+    const primary = u.emailAddresses.find((e) => e.id === primaryId);
+    return (primary?.emailAddress ?? u.emailAddresses[0]?.emailAddress ?? "").trim();
+  } catch (err) {
+    logger.warn({ err, clerkId }, "Failed to fetch email from Clerk");
+    return "";
+  }
+}
 
 export async function requireAuth(
   req: Request,
@@ -26,17 +39,22 @@ export async function requireAuth(
 
   if (!user) {
     const claims = auth.sessionClaims ?? {};
-    const email =
-      (claims["email"] as string | undefined) ??
-      (claims["primaryEmail"] as string | undefined) ??
-      (claims["emailAddress"] as string | undefined) ??
-      "";
+    let email =
+      ((claims["email"] as string | undefined) ??
+        (claims["primaryEmail"] as string | undefined) ??
+        (claims["emailAddress"] as string | undefined) ??
+        "").trim();
+
+    // Session claims usually don't include email — fetch from Clerk directly.
+    if (!email) {
+      email = await fetchClerkEmail(clerkId);
+    }
 
     // Bootstrap admin: any user signing up with the configured admin email is
     // auto-flagged. Lets the operator promote themselves without DB access.
     const shouldBeAdmin =
       ADMIN_BOOTSTRAP_EMAIL.length > 0 &&
-      email.trim().toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
+      email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
 
     [user] = await db
       .insert(usersTable)
@@ -59,6 +77,19 @@ export async function requireAuth(
     }
   }
 
+  // Backfill missing email from Clerk if older accounts have no email recorded
+  // (this also enables the idempotent admin upgrade below to work for them).
+  if (user && !user.email) {
+    const fresh = await fetchClerkEmail(clerkId);
+    if (fresh) {
+      [user] = await db
+        .update(usersTable)
+        .set({ email: fresh })
+        .where(eq(usersTable.id, user.id))
+        .returning();
+    }
+  }
+
   // Idempotent admin upgrade for users that existed before the bootstrap email
   // was configured.
   if (
@@ -72,6 +103,7 @@ export async function requireAuth(
       .set({ isAdmin: true })
       .where(eq(usersTable.id, user.id))
       .returning();
+    logger.info({ userId: user.id }, "Auto-promoted bootstrap admin");
   }
 
   if (user?.isSuspended) {
