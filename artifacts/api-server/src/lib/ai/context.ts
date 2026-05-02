@@ -10,6 +10,10 @@ export interface UserContext {
     category: string;
     status: string;
     cadence: string;
+    goalType: string;
+    targetValue: number | null;
+    targetUnit: string | null;
+    currentValue: number;
     progress: number;
     deadline: string | null;
     successCriteria: string | null;
@@ -41,6 +45,10 @@ export async function assembleContext(userId: string): Promise<UserContext> {
       category: goalsTable.category,
       status: goalsTable.status,
       cadence: goalsTable.cadence,
+      goalType: goalsTable.goalType,
+      targetValue: goalsTable.targetValue,
+      targetUnit: goalsTable.targetUnit,
+      currentValue: goalsTable.currentValue,
       progress: goalsTable.progress,
       deadline: goalsTable.deadline,
       successCriteria: goalsTable.successCriteria,
@@ -122,20 +130,30 @@ export function buildStaticContextBlock(ctx: UserContext): string {
   if (ctx.goals.length > 0) {
     lines.push("\n=== ACTIVE GOALS ===");
     for (const g of ctx.goals) {
+      const type = g.goalType ?? "habit";
       const isDaily = g.cadence !== "ongoing";
       lines.push(`[${g.id}] ${g.title}`);
       lines.push(`  Category: ${g.category}`);
+      lines.push(`  Type: ${type}`);
       lines.push(`  Cadence: ${isDaily ? "daily (resets each morning)" : "ongoing (accumulates over time)"}`);
       const pct = g.progress ?? 0;
-      const remaining = Math.max(0, 100 - pct);
-      if (isDaily) {
+      if (type === "target" && g.targetValue) {
+        const unit = g.targetUnit ?? "";
+        lines.push(`  Target: ${g.currentValue}${unit} of ${g.targetValue}${unit} (${pct}%)`);
+      } else if (type === "average" && g.targetValue) {
+        const unit = g.targetUnit ?? "";
+        lines.push(`  Average target: ${g.targetValue}${unit}; current value tracked: ${g.currentValue}${unit}`);
+      } else if (type === "milestone") {
+        lines.push(`  Milestone-based — see active milestone below.`);
+      } else if (isDaily) {
+        const remaining = Math.max(0, 100 - pct);
         lines.push(`  Progress today: ${pct}% done, ${remaining}% remaining`);
       } else {
         lines.push(`  Overall progress: ${pct}%`);
       }
       if (g.deadline) lines.push(`  Deadline: ${g.deadline}`);
       if (g.successCriteria) lines.push(`  Success criteria: ${g.successCriteria}`);
-      if (isDaily) lines.push(`  Current streak: ${g.currentStreak} days`);
+      if (isDaily && type === "habit") lines.push(`  Current streak: ${g.currentStreak} days`);
     }
   } else {
     lines.push("\n=== ACTIVE GOALS ===");

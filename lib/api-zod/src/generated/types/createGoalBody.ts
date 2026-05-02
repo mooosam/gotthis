@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateGoalBodyCadence } from "./createGoalBodyCadence";
+import type { CreateGoalBodyGoalType } from "./createGoalBodyGoalType";
 
 export interface CreateGoalBody {
   title: string;
@@ -12,4 +14,8 @@ export interface CreateGoalBody {
   category?: string;
   deadline?: string;
   successCriteria?: string;
+  cadence?: CreateGoalBodyCadence;
+  goalType?: CreateGoalBodyGoalType;
+  targetValue?: number;
+  targetUnit?: string;
 }

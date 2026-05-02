@@ -30,9 +30,12 @@ import type {
   MagicLinkResolved,
   MagicLinkResponse,
   MemorySummary,
+  SkipCreditResponse,
+  SkipCreditStatus,
   UpdateDailyLogBody,
   UpdateGoalBody,
   UpdateProfileBody,
+  UseSkipCreditBody,
   User,
 } from "./api.schemas";
 
@@ -788,6 +791,167 @@ export const useDeleteGoal = <
 > => {
   return useMutation(getDeleteGoalMutationOptions(options));
 };
+
+/**
+ * @summary Use a skip credit to preserve a goal's streak for today
+ */
+export const getUseSkipCreditUrl = () => {
+  return `/api/skip-credits/use`;
+};
+
+export const useSkipCredit = async (
+  useSkipCreditBody: UseSkipCreditBody,
+  options?: RequestInit,
+): Promise<SkipCreditResponse> => {
+  return customFetch<SkipCreditResponse>(getUseSkipCreditUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(useSkipCreditBody),
+  });
+};
+
+export const getUseSkipCreditMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof useSkipCredit>>,
+    TError,
+    { data: BodyType<UseSkipCreditBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof useSkipCredit>>,
+  TError,
+  { data: BodyType<UseSkipCreditBody> },
+  TContext
+> => {
+  const mutationKey = ["useSkipCredit"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof useSkipCredit>>,
+    { data: BodyType<UseSkipCreditBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return useSkipCredit(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UseSkipCreditMutationResult = NonNullable<
+  Awaited<ReturnType<typeof useSkipCredit>>
+>;
+export type UseSkipCreditMutationBody = BodyType<UseSkipCreditBody>;
+export type UseSkipCreditMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Use a skip credit to preserve a goal's streak for today
+ */
+export const useUseSkipCredit = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof useSkipCredit>>,
+    TError,
+    { data: BodyType<UseSkipCreditBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof useSkipCredit>>,
+  TError,
+  { data: BodyType<UseSkipCreditBody> },
+  TContext
+> => {
+  return useMutation(getUseSkipCreditMutationOptions(options));
+};
+
+/**
+ * @summary Get remaining skip credits for the current month
+ */
+export const getGetSkipCreditsUrl = () => {
+  return `/api/skip-credits`;
+};
+
+export const getSkipCredits = async (
+  options?: RequestInit,
+): Promise<SkipCreditStatus> => {
+  return customFetch<SkipCreditStatus>(getGetSkipCreditsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSkipCreditsQueryKey = () => {
+  return [`/api/skip-credits`] as const;
+};
+
+export const getGetSkipCreditsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSkipCredits>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSkipCredits>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSkipCreditsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSkipCredits>>> = ({
+    signal,
+  }) => getSkipCredits({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSkipCredits>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSkipCreditsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSkipCredits>>
+>;
+export type GetSkipCreditsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get remaining skip credits for the current month
+ */
+
+export function useGetSkipCredits<
+  TData = Awaited<ReturnType<typeof getSkipCredits>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSkipCredits>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSkipCreditsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List daily logs for current user

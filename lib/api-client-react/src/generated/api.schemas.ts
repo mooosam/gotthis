@@ -49,13 +49,45 @@ export interface Goal {
   deadline?: string | null;
   status: string;
   progress: number;
+  cadence: string;
+  goalType: string;
+  /** @nullable */
+  targetValue?: number | null;
+  /** @nullable */
+  targetUnit?: string | null;
+  currentValue: number;
   /** @nullable */
   successCriteria?: string | null;
   currentStreak: number;
   longestStreak: number;
+  /**
+   * yyyy-MM-dd date of the last streak activity (in user's timezone)
+   * @nullable
+   */
+  lastStreakDate?: string | null;
+  /** @nullable */
+  shareToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type CreateGoalBodyCadence =
+  (typeof CreateGoalBodyCadence)[keyof typeof CreateGoalBodyCadence];
+
+export const CreateGoalBodyCadence = {
+  daily: "daily",
+  ongoing: "ongoing",
+} as const;
+
+export type CreateGoalBodyGoalType =
+  (typeof CreateGoalBodyGoalType)[keyof typeof CreateGoalBodyGoalType];
+
+export const CreateGoalBodyGoalType = {
+  habit: "habit",
+  target: "target",
+  average: "average",
+  milestone: "milestone",
+} as const;
 
 export interface CreateGoalBody {
   title: string;
@@ -63,7 +95,29 @@ export interface CreateGoalBody {
   category?: string;
   deadline?: string;
   successCriteria?: string;
+  cadence?: CreateGoalBodyCadence;
+  goalType?: CreateGoalBodyGoalType;
+  targetValue?: number;
+  targetUnit?: string;
 }
+
+export type UpdateGoalBodyCadence =
+  (typeof UpdateGoalBodyCadence)[keyof typeof UpdateGoalBodyCadence];
+
+export const UpdateGoalBodyCadence = {
+  daily: "daily",
+  ongoing: "ongoing",
+} as const;
+
+export type UpdateGoalBodyGoalType =
+  (typeof UpdateGoalBodyGoalType)[keyof typeof UpdateGoalBodyGoalType];
+
+export const UpdateGoalBodyGoalType = {
+  habit: "habit",
+  target: "target",
+  average: "average",
+  milestone: "milestone",
+} as const;
 
 export interface UpdateGoalBody {
   title?: string;
@@ -73,6 +127,29 @@ export interface UpdateGoalBody {
   status?: string;
   progress?: number;
   successCriteria?: string;
+  cadence?: UpdateGoalBodyCadence;
+  goalType?: UpdateGoalBodyGoalType;
+  targetValue?: number;
+  targetUnit?: string;
+  currentValue?: number;
+}
+
+export interface UseSkipCreditBody {
+  goalId: string;
+}
+
+export interface SkipCreditResponse {
+  success: boolean;
+  remaining: number;
+  goalId: string;
+}
+
+export interface SkipCreditStatus {
+  remaining: number;
+  used: number;
+  monthlyAllowance: number;
+  /** @nullable */
+  resetAt?: string | null;
 }
 
 export interface DailyLog {

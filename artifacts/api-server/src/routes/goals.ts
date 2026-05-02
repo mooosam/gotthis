@@ -45,7 +45,24 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { title, description, category, deadline, successCriteria, cadence } = parsed.data;
+  const {
+    title,
+    description,
+    category,
+    deadline,
+    successCriteria,
+    cadence,
+    goalType,
+    targetValue,
+    targetUnit,
+  } = parsed.data;
+
+  const resolvedType = goalType ?? "habit";
+  // Quantitative types accumulate over time; force ongoing cadence
+  const resolvedCadence =
+    resolvedType === "target" || resolvedType === "average" || resolvedType === "milestone"
+      ? "ongoing"
+      : (cadence ?? "daily");
 
   const [goal] = await db
     .insert(goalsTable)
@@ -57,7 +74,10 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
       category: category ?? "general",
       deadline: deadline ?? null,
       successCriteria: successCriteria ?? null,
-      cadence: cadence ?? "daily",
+      cadence: resolvedCadence,
+      goalType: resolvedType,
+      targetValue: targetValue ?? null,
+      targetUnit: targetUnit ?? null,
       shareToken: nanoid(16),
     })
     .returning();
@@ -102,7 +122,31 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { title, description, category, deadline, status, progress, successCriteria, cadence } = bodyParsed.data;
+  const {
+    title,
+    description,
+    category,
+    deadline,
+    status,
+    progress,
+    successCriteria,
+    cadence,
+    goalType,
+    targetValue,
+    targetUnit,
+    currentValue,
+  } = bodyParsed.data;
+
+  // Load existing goal first so we can resolve effective fields when only a subset is patched.
+  const [existing] = await db
+    .select()
+    .from(goalsTable)
+    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Goal not found" });
+    return;
+  }
 
   const updates: Partial<typeof goalsTable.$inferInsert> = {};
   if (title !== undefined) updates.title = title;
@@ -110,9 +154,33 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (category !== undefined) updates.category = category;
   if (deadline !== undefined) updates.deadline = deadline;
   if (status !== undefined) updates.status = status;
-  if (progress !== undefined) updates.progress = progress;
   if (successCriteria !== undefined) updates.successCriteria = successCriteria;
-  if (cadence !== undefined) updates.cadence = cadence;
+  if (goalType !== undefined) updates.goalType = goalType;
+  if (targetValue !== undefined) updates.targetValue = targetValue;
+  if (targetUnit !== undefined) updates.targetUnit = targetUnit;
+  if (currentValue !== undefined) updates.currentValue = currentValue;
+
+  // Resolve effective values to enforce invariants and derive progress consistently.
+  const effectiveType = goalType ?? existing.goalType;
+  const effectiveTarget = targetValue !== undefined ? targetValue : existing.targetValue;
+  const effectiveCurrent = currentValue !== undefined ? currentValue : existing.currentValue;
+  const isQuant = effectiveType === "target" || effectiveType === "average";
+  const isMilestoneOrQuant = isQuant || effectiveType === "milestone";
+
+  // Type/cadence invariant: non-habit types are always 'ongoing' (no daily reset / streaks).
+  if (cadence !== undefined) {
+    updates.cadence = isMilestoneOrQuant ? "ongoing" : cadence;
+  } else if (goalType !== undefined && isMilestoneOrQuant && existing.cadence !== "ongoing") {
+    updates.cadence = "ongoing";
+  }
+
+  if (isQuant && effectiveTarget && effectiveTarget > 0) {
+    // Auto-derive progress for quantitative types from effective current/target.
+    updates.progress = Math.min(100, Math.round((effectiveCurrent / effectiveTarget) * 100));
+  } else if (progress !== undefined) {
+    // Manual progress only honored for non-quantitative types.
+    updates.progress = progress;
+  }
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No fields to update" });

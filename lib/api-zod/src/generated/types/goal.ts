@@ -17,10 +17,24 @@ export interface Goal {
   deadline?: string | null;
   status: string;
   progress: number;
+  cadence: string;
+  goalType: string;
+  /** @nullable */
+  targetValue?: number | null;
+  /** @nullable */
+  targetUnit?: string | null;
+  currentValue: number;
   /** @nullable */
   successCriteria?: string | null;
   currentStreak: number;
   longestStreak: number;
+  /**
+   * yyyy-MM-dd date of the last streak activity (in user's timezone)
+   * @nullable
+   */
+  lastStreakDate?: string | null;
+  /** @nullable */
+  shareToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }

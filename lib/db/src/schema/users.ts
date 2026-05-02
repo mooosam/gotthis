@@ -27,6 +27,9 @@ export const usersTable = pgTable("users", {
   newsletterCadence: text("newsletter_cadence").notNull().default("weekly"),
   lastWeeklyChartSentAt: timestamp("last_weekly_chart_sent_at", { withTimezone: true }),
   lastNewsletterSentAt: timestamp("last_newsletter_sent_at", { withTimezone: true }),
+  monthlySkipCredits: integer("monthly_skip_credits").notNull().default(4),
+  skipCreditsUsed: integer("skip_credits_used").notNull().default(0),
+  skipCreditsResetAt: timestamp("skip_credits_reset_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

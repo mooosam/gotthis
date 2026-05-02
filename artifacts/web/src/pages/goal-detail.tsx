@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
-import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon, Circle, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Edit, Trash, Target, Flame, CheckCircle2, Save, CalendarIcon, Circle, Plus, Share2, Repeat, TrendingUp, Activity, Flag, SkipForward } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -90,6 +90,13 @@ const editGoalSchema = z.object({
 
 type EditGoalValues = z.infer<typeof editGoalSchema>;
 
+const GOAL_TYPE_META: Record<string, { label: string; icon: typeof Repeat }> = {
+  habit: { label: "Habit", icon: Repeat },
+  target: { label: "Target", icon: TrendingUp },
+  average: { label: "Average", icon: Activity },
+  milestone: { label: "Milestone", icon: Flag },
+};
+
 export default function GoalDetailPage({ id }: { id: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -99,14 +106,17 @@ export default function GoalDetailPage({ id }: { id: string }) {
     query: { enabled: !!id, queryKey: getGetGoalQueryKey(id) } 
   });
   
-  const { data: logs } = useListDailyLogs({ limit: 14 });
+  const { data: logs } = useListDailyLogs({ limit: 100 });
   
   const updateGoal = useUpdateGoal();
   const deleteGoal = useDeleteGoal();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [progressValue, setProgressValue] = useState<number[]>([0]);
+  const [currentValueInput, setCurrentValueInput] = useState<number>(0);
   const [isUpdatingProgress, setIsUpdatingProgress] = useState(false);
+  const [skipCreditsRemaining, setSkipCreditsRemaining] = useState<number | null>(null);
+  const [isUsingSkipCredit, setIsUsingSkipCredit] = useState(false);
 
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
@@ -238,9 +248,12 @@ export default function GoalDetailPage({ id }: { id: string }) {
     if (!goal) return;
     setIsUpdatingProgress(true);
     try {
+      const isQuant = goal.goalType === "target" || goal.goalType === "average";
       await updateGoal.mutateAsync({
         id,
-        data: { progress: progressValue[0] }
+        data: isQuant
+          ? { currentValue: currentValueInput }
+          : { progress: progressValue[0] },
       });
       queryClient.invalidateQueries({ queryKey: getGetGoalQueryKey(id) });
       toast({ title: "Progress updated" });
@@ -248,6 +261,57 @@ export default function GoalDetailPage({ id }: { id: string }) {
       toast({ title: "Failed to update progress", variant: "destructive" });
     } finally {
       setIsUpdatingProgress(false);
+    }
+  };
+
+  const fetchSkipCredits = useCallback(async () => {
+    try {
+      const r = await apiFetch(`${API_BASE}/api/skip-credits`);
+      if (r.ok) {
+        const data = await r.json();
+        setSkipCreditsRemaining(data.remaining);
+      }
+    } catch {
+      // ignore — non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSkipCredits();
+  }, [fetchSkipCredits]);
+
+  useEffect(() => {
+    if (goal) {
+      setCurrentValueInput(goal.currentValue ?? 0);
+    }
+  }, [goal]);
+
+  const handleUseSkipCredit = async () => {
+    if (!goal) return;
+    setIsUsingSkipCredit(true);
+    try {
+      const r = await apiFetch(`${API_BASE}/api/skip-credits/use`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goalId: id }),
+      });
+      const data = await r.json();
+      if (r.ok) {
+        setSkipCreditsRemaining(data.remaining);
+        queryClient.invalidateQueries({ queryKey: getGetGoalQueryKey(id) });
+        toast({
+          title: "Skip credit used",
+          description: `Streak preserved. ${data.remaining} credit${data.remaining === 1 ? "" : "s"} left this month.`,
+        });
+      } else {
+        toast({
+          title: "Could not use skip credit",
+          description: data.error,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsUsingSkipCredit(false);
     }
   };
 
@@ -295,12 +359,46 @@ export default function GoalDetailPage({ id }: { id: string }) {
   }
 
   const recentLogDates = new Set(logs?.map((l) => l.logDate) ?? []);
-  const last7Days = Array.from({ length: 7 }).map((_, i) => {
+
+  // Build 90-day GitHub-style heatmap (oldest first)
+  const heatmapDays = Array.from({ length: 90 }).map((_, i) => {
     const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - (89 - i));
     const dateStr = format(d, "yyyy-MM-dd");
-    return { label: format(d, "MMM d"), dateStr, hasLog: recentLogDates.has(dateStr) };
+    return {
+      date: d,
+      dateStr,
+      hasLog: recentLogDates.has(dateStr),
+      label: format(d, "MMM d"),
+    };
   });
+  const heatmapLogged = heatmapDays.filter((d) => d.hasLog).length;
+
+  // Pad to align with weeks (Sunday-start columns)
+  const firstDow = heatmapDays[0].date.getDay();
+  const paddedDays = [
+    ...Array.from({ length: firstDow }).map(() => null),
+    ...heatmapDays,
+  ];
+  const weeks: Array<Array<typeof heatmapDays[0] | null>> = [];
+  for (let i = 0; i < paddedDays.length; i += 7) {
+    weeks.push(paddedDays.slice(i, i + 7));
+  }
+
+  const goalType = goal.goalType ?? "habit";
+  const isQuant = goalType === "target" || goalType === "average";
+  const typeMeta = GOAL_TYPE_META[goalType] ?? GOAL_TYPE_META.habit;
+  const TypeIcon = typeMeta.icon;
+
+  // Skip credit availability: daily habit, has a streak, today not yet stamped
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const canUseSkipCredit =
+    goalType === "habit" &&
+    goal.cadence !== "ongoing" &&
+    goal.currentStreak > 0 &&
+    goal.lastStreakDate !== todayStr &&
+    (skipCreditsRemaining === null || skipCreditsRemaining > 0);
 
   return (
     <AppLayout>
@@ -323,6 +421,10 @@ export default function GoalDetailPage({ id }: { id: string }) {
               </Badge>
               <Badge variant="outline" className="font-normal capitalize">
                 {goal.cadence === "ongoing" ? "Ongoing" : "Daily"}
+              </Badge>
+              <Badge variant="outline" className="font-normal gap-1" data-testid="badge-goal-type">
+                <TypeIcon className="h-3 w-3" />
+                {typeMeta.label}
               </Badge>
             </div>
             <h1 className="text-3xl md:text-4xl font-serif font-bold tracking-tight text-foreground" data-testid="goal-title">
@@ -530,45 +632,114 @@ export default function GoalDetailPage({ id }: { id: string }) {
               <CardTitle className="font-serif">Progress Tracking</CardTitle>
             </CardHeader>
             <CardContent className="space-y-8">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Current Progress</span>
-                  <span className="text-2xl font-serif font-bold text-primary">{progressValue[0]}%</span>
-                </div>
-                <div className="flex gap-4 items-center">
-                  <Slider 
-                    value={progressValue} 
-                    onValueChange={setProgressValue} 
-                    max={100} 
-                    step={1} 
-                    className="flex-1"
-                  />
-                  <Button 
-                    size="sm" 
-                    onClick={handleProgressUpdate} 
-                    disabled={isUpdatingProgress || progressValue[0] === goal.progress}
-                  >
-                    <Save className="mr-2 h-4 w-4" /> Save
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="mt-6">
-                <p className="text-sm font-medium mb-3 text-muted-foreground">Activity — last 7 days</p>
-                <div className="flex gap-2 items-end">
-                  {last7Days.map((day) => (
-                    <div key={day.dateStr} className="flex flex-col items-center gap-1 flex-1">
+              {isQuant ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm font-medium">
+                      {goalType === "target" ? "Accumulated" : "Latest value"}
+                    </span>
+                    <div className="text-right">
+                      <span className="text-2xl font-serif font-bold text-primary" data-testid="text-current-value">
+                        {currentValueInput}
+                      </span>
+                      {goal.targetValue ? (
+                        <span className="text-sm text-muted-foreground ml-1">
+                          {goal.targetUnit ?? ""} of {goal.targetValue}{goal.targetUnit ?? ""}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground ml-1">{goal.targetUnit ?? ""}</span>
+                      )}
+                    </div>
+                  </div>
+                  {goal.targetValue ? (
+                    <div className="w-full bg-secondary rounded-full h-2">
                       <div
-                        className={`w-full rounded-sm h-6 ${day.hasLog ? "bg-primary" : "bg-secondary"}`}
-                        title={day.hasLog ? `Log on ${day.label}` : `No log on ${day.label}`}
+                        className="bg-primary h-2 rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, Math.round((currentValueInput / goal.targetValue) * 100))}%`,
+                        }}
                       />
-                      <span className="text-xs text-muted-foreground">{day.label}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={currentValueInput}
+                      onChange={(e) => setCurrentValueInput(Math.max(0, Number(e.target.value || 0)))}
+                      className="max-w-[180px]"
+                      data-testid="input-current-value"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleProgressUpdate}
+                      disabled={isUpdatingProgress || currentValueInput === (goal.currentValue ?? 0)}
+                      data-testid="button-save-current-value"
+                    >
+                      <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Current Progress</span>
+                    <span className="text-2xl font-serif font-bold text-primary">{progressValue[0]}%</span>
+                  </div>
+                  <div className="flex gap-4 items-center">
+                    <Slider
+                      value={progressValue}
+                      onValueChange={setProgressValue}
+                      max={100}
+                      step={1}
+                      className="flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleProgressUpdate}
+                      disabled={isUpdatingProgress || progressValue[0] === goal.progress}
+                    >
+                      <Save className="mr-2 h-4 w-4" /> Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6">
+                <div className="flex items-baseline justify-between mb-3">
+                  <p className="text-sm font-medium text-muted-foreground">Activity — last 90 days</p>
+                  <p className="text-xs text-muted-foreground" data-testid="text-heatmap-summary">
+                    {heatmapLogged} of 90 days logged
+                  </p>
+                </div>
+                <div className="flex gap-1 overflow-x-auto pb-2" data-testid="heatmap-90day">
+                  {weeks.map((week, wi) => (
+                    <div key={wi} className="flex flex-col gap-1">
+                      {week.map((day, di) =>
+                        day === null ? (
+                          <div key={`pad-${wi}-${di}`} className="w-3 h-3" />
+                        ) : (
+                          <div
+                            key={day.dateStr}
+                            className={`w-3 h-3 rounded-[2px] ${
+                              day.hasLog ? "bg-primary" : "bg-muted"
+                            }`}
+                            title={day.hasLog ? `Logged on ${day.label}` : `No log on ${day.label}`}
+                          />
+                        ),
+                      )}
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {last7Days.filter((d) => d.hasLog).length} of 7 days logged
-                </p>
+                <div className="flex items-center justify-end gap-2 mt-3 text-xs text-muted-foreground">
+                  <span>Less</span>
+                  <div className="w-3 h-3 rounded-[2px] bg-muted" />
+                  <div className="w-3 h-3 rounded-[2px] bg-primary/40" />
+                  <div className="w-3 h-3 rounded-[2px] bg-primary/70" />
+                  <div className="w-3 h-3 rounded-[2px] bg-primary" />
+                  <span>More</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -586,6 +757,33 @@ export default function GoalDetailPage({ id }: { id: string }) {
                       <p className="text-2xl font-serif font-bold">{goal.currentStreak} Days</p>
                     </div>
                   </div>
+                  {goalType === "habit" && goal.cadence !== "ongoing" && (
+                    <div className="pt-2 border-t border-border/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-muted-foreground">Skip credits</p>
+                        <p className="text-sm font-medium" data-testid="text-skip-credits-remaining">
+                          {skipCreditsRemaining === null ? "—" : `${skipCreditsRemaining} left this month`}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        disabled={!canUseSkipCredit || isUsingSkipCredit}
+                        onClick={handleUseSkipCredit}
+                        data-testid="button-use-skip-credit"
+                      >
+                        <SkipForward className="mr-2 h-4 w-4" />
+                        {isUsingSkipCredit
+                          ? "Using credit..."
+                          : goal.lastStreakDate === todayStr
+                            ? "Streak already secured today"
+                            : skipCreditsRemaining === 0
+                              ? "No credits remaining"
+                              : "Use skip credit to preserve streak"}
+                      </Button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-4">
                     <div className="bg-muted p-3 rounded-full">
                       <CheckCircle2 className="h-6 w-6 text-muted-foreground" />

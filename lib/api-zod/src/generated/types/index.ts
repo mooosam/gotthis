@@ -8,6 +8,8 @@
 
 export * from "./createDailyLogBody";
 export * from "./createGoalBody";
+export * from "./createGoalBodyCadence";
+export * from "./createGoalBodyGoalType";
 export * from "./createMagicLinkBody";
 export * from "./dailyLog";
 export * from "./dashboardStats";
@@ -19,7 +21,12 @@ export * from "./listGoalsParams";
 export * from "./magicLinkResolved";
 export * from "./magicLinkResponse";
 export * from "./memorySummary";
+export * from "./skipCreditResponse";
+export * from "./skipCreditStatus";
 export * from "./updateDailyLogBody";
 export * from "./updateGoalBody";
+export * from "./updateGoalBodyCadence";
+export * from "./updateGoalBodyGoalType";
 export * from "./updateProfileBody";
 export * from "./user";
+export * from "./useSkipCreditBody";

@@ -262,6 +262,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /skip-credits/use:
+    post:
+      operationId: useSkipCredit
+      tags: [goals]
+      summary: Use a skip credit to preserve a goal's streak for today
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UseSkipCreditBody"
+      responses:
+        "200":
+          description: Skip credit used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkipCreditResponse"
+        "400":
+          description: Invalid request or no credits remaining
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Goal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /skip-credits:
+    get:
+      operationId: getSkipCredits
+      tags: [goals]
+      summary: Get remaining skip credits for the current month
+      responses:
+        "200":
+          description: Skip credits status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkipCreditStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /daily-logs:
     get:
       operationId: listDailyLogs
@@ -610,12 +666,27 @@ components:
           type: string
         progress:
           type: integer
+        cadence:
+          type: string
+        goalType:
+          type: string
+        targetValue:
+          type: ["integer", "null"]
+        targetUnit:
+          type: ["string", "null"]
+        currentValue:
+          type: integer
         successCriteria:
           type: ["string", "null"]
         currentStreak:
           type: integer
         longestStreak:
           type: integer
+        lastStreakDate:
+          type: ["string", "null"]
+          description: "yyyy-MM-dd date of the last streak activity (in user's timezone)"
+        shareToken:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:
@@ -627,6 +698,9 @@ components:
         - category
         - status
         - progress
+        - cadence
+        - goalType
+        - currentValue
         - currentStreak
         - longestStreak
         - createdAt
@@ -644,6 +718,16 @@ components:
         deadline:
           type: string
         successCriteria:
+          type: string
+        cadence:
+          type: string
+          enum: [daily, ongoing]
+        goalType:
+          type: string
+          enum: [habit, target, average, milestone]
+        targetValue:
+          type: integer
+        targetUnit:
           type: string
       required:
         - title
@@ -665,6 +749,56 @@ components:
           type: integer
         successCriteria:
           type: string
+        cadence:
+          type: string
+          enum: [daily, ongoing]
+        goalType:
+          type: string
+          enum: [habit, target, average, milestone]
+        targetValue:
+          type: integer
+        targetUnit:
+          type: string
+        currentValue:
+          type: integer
+
+    UseSkipCreditBody:
+      type: object
+      properties:
+        goalId:
+          type: string
+      required:
+        - goalId
+
+    SkipCreditResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        remaining:
+          type: integer
+        goalId:
+          type: string
+      required:
+        - success
+        - remaining
+        - goalId
+
+    SkipCreditStatus:
+      type: object
+      properties:
+        remaining:
+          type: integer
+        used:
+          type: integer
+        monthlyAllowance:
+          type: integer
+        resetAt:
+          type: ["string", "null"]
+      required:
+        - remaining
+        - used
+        - monthlyAllowance
 
     DailyLog:
       type: object

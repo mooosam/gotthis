@@ -97,10 +97,21 @@ export const ListGoalsResponseItem = zod.object({
   deadline: zod.string().nullish(),
   status: zod.string(),
   progress: zod.number(),
-  successCriteria: zod.string().nullish(),
   cadence: zod.string(),
+  goalType: zod.string(),
+  targetValue: zod.number().nullish(),
+  targetUnit: zod.string().nullish(),
+  currentValue: zod.number(),
+  successCriteria: zod.string().nullish(),
   currentStreak: zod.number(),
   longestStreak: zod.number(),
+  lastStreakDate: zod
+    .string()
+    .nullish()
+    .describe(
+      "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+    ),
+  shareToken: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -116,6 +127,9 @@ export const CreateGoalBody = zod.object({
   deadline: zod.string().optional(),
   successCriteria: zod.string().optional(),
   cadence: zod.enum(["daily", "ongoing"]).optional(),
+  goalType: zod.enum(["habit", "target", "average", "milestone"]).optional(),
+  targetValue: zod.number().optional(),
+  targetUnit: zod.string().optional(),
 });
 
 /**
@@ -134,10 +148,20 @@ export const GetGoalResponse = zod.object({
   deadline: zod.string().nullish(),
   status: zod.string(),
   progress: zod.number(),
-  successCriteria: zod.string().nullish(),
   cadence: zod.string(),
+  goalType: zod.string(),
+  targetValue: zod.number().nullish(),
+  targetUnit: zod.string().nullish(),
+  currentValue: zod.number(),
+  successCriteria: zod.string().nullish(),
   currentStreak: zod.number(),
   longestStreak: zod.number(),
+  lastStreakDate: zod
+    .string()
+    .nullish()
+    .describe(
+      "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+    ),
   shareToken: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
@@ -159,6 +183,10 @@ export const UpdateGoalBody = zod.object({
   progress: zod.number().optional(),
   successCriteria: zod.string().optional(),
   cadence: zod.enum(["daily", "ongoing"]).optional(),
+  goalType: zod.enum(["habit", "target", "average", "milestone"]).optional(),
+  targetValue: zod.number().optional(),
+  targetUnit: zod.string().optional(),
+  currentValue: zod.number().optional(),
 });
 
 export const UpdateGoalResponse = zod.object({
@@ -170,10 +198,21 @@ export const UpdateGoalResponse = zod.object({
   deadline: zod.string().nullish(),
   status: zod.string(),
   progress: zod.number(),
-  successCriteria: zod.string().nullish(),
   cadence: zod.string(),
+  goalType: zod.string(),
+  targetValue: zod.number().nullish(),
+  targetUnit: zod.string().nullish(),
+  currentValue: zod.number(),
+  successCriteria: zod.string().nullish(),
   currentStreak: zod.number(),
   longestStreak: zod.number(),
+  lastStreakDate: zod
+    .string()
+    .nullish()
+    .describe(
+      "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+    ),
+  shareToken: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -183,6 +222,29 @@ export const UpdateGoalResponse = zod.object({
  */
 export const DeleteGoalParams = zod.object({
   id: zod.coerce.string(),
+});
+
+/**
+ * @summary Use a skip credit to preserve a goal's streak for today
+ */
+export const UseSkipCreditBody = zod.object({
+  goalId: zod.string(),
+});
+
+export const UseSkipCreditResponse = zod.object({
+  success: zod.boolean(),
+  remaining: zod.number(),
+  goalId: zod.string(),
+});
+
+/**
+ * @summary Get remaining skip credits for the current month
+ */
+export const GetSkipCreditsResponse = zod.object({
+  remaining: zod.number(),
+  used: zod.number(),
+  monthlyAllowance: zod.number(),
+  resetAt: zod.string().nullish(),
 });
 
 /**
@@ -300,9 +362,21 @@ export const GetDashboardStatsResponse = zod.object({
       deadline: zod.string().nullish(),
       status: zod.string(),
       progress: zod.number(),
+      cadence: zod.string(),
+      goalType: zod.string(),
+      targetValue: zod.number().nullish(),
+      targetUnit: zod.string().nullish(),
+      currentValue: zod.number(),
       successCriteria: zod.string().nullish(),
       currentStreak: zod.number(),
       longestStreak: zod.number(),
+      lastStreakDate: zod
+        .string()
+        .nullish()
+        .describe(
+          "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+        ),
+      shareToken: zod.string().nullish(),
       createdAt: zod.string(),
       updatedAt: zod.string(),
     }),

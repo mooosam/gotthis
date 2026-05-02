@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateGoalBodyCadence } from "./updateGoalBodyCadence";
+import type { UpdateGoalBodyGoalType } from "./updateGoalBodyGoalType";
 
 export interface UpdateGoalBody {
   title?: string;
@@ -14,4 +16,9 @@ export interface UpdateGoalBody {
   status?: string;
   progress?: number;
   successCriteria?: string;
+  cadence?: UpdateGoalBodyCadence;
+  goalType?: UpdateGoalBodyGoalType;
+  targetValue?: number;
+  targetUnit?: string;
+  currentValue?: number;
 }

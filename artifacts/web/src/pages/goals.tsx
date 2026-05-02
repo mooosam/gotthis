@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Plus, Check, Target, Flame, PauseCircle, Trash2, Pencil, Minus } from "lucide-react";
+import { Plus, Check, Target, Flame, PauseCircle, Trash2, Pencil, Minus, Repeat, TrendingUp, Activity, Flag } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -84,10 +84,14 @@ const goalSchema = z.object({
   deadline: z.string().optional(),
   successCriteria: z.string().optional(),
   cadence: z.enum(["daily", "ongoing"]),
+  goalType: z.enum(["habit", "target", "average", "milestone"]),
+  targetValue: z.number().int().nonnegative().optional(),
+  targetUnit: z.string().optional(),
 });
 
 const editGoalSchema = goalSchema.extend({
   progress: z.number().min(0).max(100),
+  currentValue: z.number().int().nonnegative().optional(),
 });
 
 type GoalValues = z.infer<typeof goalSchema>;
@@ -104,7 +108,37 @@ interface GoalRow {
   progress: number;
   currentStreak: number;
   cadence: string;
+  goalType: string;
+  targetValue: number | null;
+  targetUnit: string | null;
+  currentValue: number;
 }
+
+const GOAL_TYPE_META: Record<
+  string,
+  { label: string; description: string; icon: typeof Repeat }
+> = {
+  habit: {
+    label: "Habit",
+    description: "Yes/no daily completion. Builds streaks.",
+    icon: Repeat,
+  },
+  target: {
+    label: "Target",
+    description: "Quantitative — accumulate toward a number.",
+    icon: TrendingUp,
+  },
+  average: {
+    label: "Average",
+    description: "Maintain a baseline value over time.",
+    icon: Activity,
+  },
+  milestone: {
+    label: "Milestone",
+    description: "Project broken into ordered steps.",
+    icon: Flag,
+  },
+};
 
 export default function GoalsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("active");
@@ -131,6 +165,9 @@ export default function GoalsPage() {
       deadline: "",
       successCriteria: "",
       cadence: "daily",
+      goalType: "habit",
+      targetValue: undefined,
+      targetUnit: "",
     },
   });
 
@@ -143,9 +180,16 @@ export default function GoalsPage() {
       deadline: "",
       successCriteria: "",
       cadence: "daily",
+      goalType: "habit",
+      targetValue: undefined,
+      targetUnit: "",
       progress: 0,
+      currentValue: 0,
     },
   });
+
+  const watchedCreateType = createForm.watch("goalType");
+  const watchedEditType = editForm.watch("goalType");
 
   const invalidateGoals = () => {
     queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
@@ -154,6 +198,7 @@ export default function GoalsPage() {
 
   const onCreateSubmit = async (data: GoalValues) => {
     try {
+      const isQuant = data.goalType === "target" || data.goalType === "average";
       await createGoal.mutateAsync({
         data: {
           title: data.title,
@@ -162,6 +207,9 @@ export default function GoalsPage() {
           deadline: data.deadline || undefined,
           successCriteria: data.successCriteria || undefined,
           cadence: data.cadence,
+          goalType: data.goalType,
+          targetValue: isQuant && data.targetValue ? data.targetValue : undefined,
+          targetUnit: isQuant && data.targetUnit ? data.targetUnit : undefined,
         },
       });
       invalidateGoals();
@@ -175,6 +223,11 @@ export default function GoalsPage() {
 
   const openEdit = (goal: GoalRow) => {
     setEditTarget(goal);
+    const goalType = (["habit", "target", "average", "milestone"] as const).includes(
+      goal.goalType as "habit" | "target" | "average" | "milestone",
+    )
+      ? (goal.goalType as "habit" | "target" | "average" | "milestone")
+      : "habit";
     editForm.reset({
       title: goal.title,
       description: goal.description || "",
@@ -182,13 +235,18 @@ export default function GoalsPage() {
       deadline: goal.deadline || "",
       successCriteria: goal.successCriteria || "",
       cadence: (goal.cadence === "ongoing" ? "ongoing" : "daily") as "daily" | "ongoing",
+      goalType,
+      targetValue: goal.targetValue ?? undefined,
+      targetUnit: goal.targetUnit ?? "",
       progress: goal.progress,
+      currentValue: goal.currentValue ?? 0,
     });
   };
 
   const onEditSubmit = async (data: EditGoalValues) => {
     if (!editTarget) return;
     try {
+      const isQuant = data.goalType === "target" || data.goalType === "average";
       await updateGoal.mutateAsync({
         id: editTarget.id,
         data: {
@@ -198,7 +256,11 @@ export default function GoalsPage() {
           deadline: data.deadline || undefined,
           successCriteria: data.successCriteria || undefined,
           cadence: data.cadence,
-          progress: data.progress,
+          goalType: data.goalType,
+          ...(isQuant && data.targetValue !== undefined ? { targetValue: data.targetValue } : {}),
+          ...(isQuant && data.targetUnit ? { targetUnit: data.targetUnit } : {}),
+          ...(isQuant ? { currentValue: data.currentValue ?? 0 } : {}),
+          ...(isQuant ? {} : { progress: data.progress }),
         },
       });
       invalidateGoals();
@@ -375,25 +437,99 @@ export default function GoalsPage() {
 
                   <FormField
                     control={createForm.control}
-                    name="cadence"
+                    name="goalType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tracking cadence</FormLabel>
+                        <FormLabel>Goal type</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select cadence" />
+                            <SelectTrigger data-testid="select-goal-type">
+                              <SelectValue placeholder="Choose how to track this goal" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
-                            <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                            {Object.entries(GOAL_TYPE_META).map(([value, meta]) => (
+                              <SelectItem key={value} value={value}>
+                                {meta.label} — {meta.description}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  {(watchedCreateType === "target" || watchedCreateType === "average") && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={createForm.control}
+                        name="targetValue"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {watchedCreateType === "target" ? "Target amount" : "Target average"}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="e.g. 5000"
+                                value={field.value ?? ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  field.onChange(v === "" ? undefined : Number(v));
+                                }}
+                                data-testid="input-target-value"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={createForm.control}
+                        name="targetUnit"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Unit</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="$ / km / hrs"
+                                {...field}
+                                data-testid="input-target-unit"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+
+                  {watchedCreateType === "habit" && (
+                    <FormField
+                      control={createForm.control}
+                      name="cadence"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tracking cadence</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select cadence" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
+                              <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   <div className="flex justify-end pt-4">
                     <Button
@@ -454,9 +590,25 @@ export default function GoalsPage() {
               >
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start gap-2">
-                    <Badge variant="secondary" className="font-normal text-xs">
-                      {goal.category}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="secondary" className="font-normal text-xs">
+                        {goal.category}
+                      </Badge>
+                      {(() => {
+                        const meta = GOAL_TYPE_META[goal.goalType ?? "habit"] ?? GOAL_TYPE_META.habit;
+                        const Icon = meta.icon;
+                        return (
+                          <Badge
+                            variant="outline"
+                            className="font-normal text-xs gap-1"
+                            data-testid={`badge-goal-type-${goal.id}`}
+                          >
+                            <Icon className="h-3 w-3" />
+                            {meta.label}
+                          </Badge>
+                        );
+                      })()}
+                    </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -533,7 +685,11 @@ export default function GoalsPage() {
 
                   <div className="space-y-1 mt-auto">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Progress</span>
+                      <span>
+                        {(goal.goalType === "target" || goal.goalType === "average") && goal.targetValue
+                          ? `${goal.currentValue ?? 0}${goal.targetUnit ?? ""} of ${goal.targetValue}${goal.targetUnit ?? ""}`
+                          : "Progress"}
+                      </span>
                       <span>{goal.progress}%</span>
                     </div>
                     <div className="w-full bg-secondary rounded-full h-1.5">
@@ -546,11 +702,17 @@ export default function GoalsPage() {
                 </CardContent>
                 <CardFooter className="pt-0 text-xs text-muted-foreground flex justify-between border-t border-border/40 px-6 py-3 mt-4 bg-muted/20">
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <Flame className="h-3 w-3" />
-                      <span>{goal.currentStreak} day streak</span>
-                    </div>
-                    {goal.cadence === "ongoing" && (
+                    {(goal.goalType ?? "habit") === "habit" ? (
+                      <div className="flex items-center gap-1">
+                        <Flame className="h-3 w-3" />
+                        <span>{goal.currentStreak} day streak</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs">
+                        {GOAL_TYPE_META[goal.goalType]?.label ?? "Goal"}
+                      </span>
+                    )}
+                    {goal.cadence === "ongoing" && (goal.goalType ?? "habit") === "habit" && (
                       <Badge variant="outline" className="text-xs py-0 h-4 font-normal">ongoing</Badge>
                     )}
                   </div>
@@ -657,19 +819,22 @@ export default function GoalsPage() {
 
               <FormField
                 control={editForm.control}
-                name="cadence"
+                name="goalType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tracking cadence</FormLabel>
+                    <FormLabel>Goal type</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger data-testid="select-edit-goal-type">
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
-                        <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                        {Object.entries(GOAL_TYPE_META).map(([value, meta]) => (
+                          <SelectItem key={value} value={value}>
+                            {meta.label} — {meta.description}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -677,55 +842,146 @@ export default function GoalsPage() {
                 )}
               />
 
-              <FormField
-                control={editForm.control}
-                name="progress"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Progress (%)</FormLabel>
-                    <FormControl>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-9 w-9 p-0"
-                          onClick={() => field.onChange(Math.max(0, field.value - 5))}
-                          aria-label="Decrease progress"
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
+              {(watchedEditType === "target" || watchedEditType === "average") && (
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="targetValue"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {watchedEditType === "target" ? "Target amount" : "Target average"}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              field.onChange(v === "" ? undefined : Number(v));
+                            }}
+                            data-testid="input-edit-target-value"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="targetUnit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Unit</FormLabel>
+                        <FormControl>
+                          <Input placeholder="$ / km / hrs" {...field} data-testid="input-edit-target-unit" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
+              {watchedEditType === "habit" && (
+                <FormField
+                  control={editForm.control}
+                  name="cadence"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tracking cadence</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
+                          <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {(watchedEditType === "target" || watchedEditType === "average") ? (
+                <FormField
+                  control={editForm.control}
+                  name="currentValue"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Current value{editForm.getValues("targetUnit") ? ` (${editForm.getValues("targetUnit")})` : ""}
+                      </FormLabel>
+                      <FormControl>
                         <Input
                           type="number"
+                          inputMode="numeric"
                           min={0}
-                          max={100}
-                          value={field.value}
-                          onChange={(e) => field.onChange(Math.max(0, Math.min(100, Number(e.target.value))))}
-                          className="text-center w-20"
-                          data-testid="input-edit-goal-progress"
+                          value={field.value ?? 0}
+                          onChange={(e) => field.onChange(Math.max(0, Number(e.target.value || 0)))}
+                          data-testid="input-edit-current-value"
                         />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-9 w-9 p-0"
-                          onClick={() => field.onChange(Math.min(100, field.value + 5))}
-                          aria-label="Increase progress"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                        <div className="flex-1 bg-secondary rounded-full h-2 ml-2">
-                          <div
-                            className="bg-primary h-2 rounded-full transition-all"
-                            style={{ width: `${field.value}%` }}
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={editForm.control}
+                  name="progress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Progress (%)</FormLabel>
+                      <FormControl>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-9 p-0"
+                            onClick={() => field.onChange(Math.max(0, field.value - 5))}
+                            aria-label="Decrease progress"
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={field.value}
+                            onChange={(e) => field.onChange(Math.max(0, Math.min(100, Number(e.target.value))))}
+                            className="text-center w-20"
+                            data-testid="input-edit-goal-progress"
                           />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-9 p-0"
+                            onClick={() => field.onChange(Math.min(100, field.value + 5))}
+                            aria-label="Increase progress"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                          <div className="flex-1 bg-secondary rounded-full h-2 ml-2">
+                            <div
+                              className="bg-primary h-2 rounded-full transition-all"
+                              style={{ width: `${field.value}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button
