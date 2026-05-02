@@ -4,6 +4,7 @@ import { classifyIntentWithFallback } from "./classifier.js";
 import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
+import { checkPerMinuteThrottle } from "./throttle.js";
 
 export interface ProcessMessageResult {
   reply: string;
@@ -12,10 +13,34 @@ export interface ProcessMessageResult {
   monthlyTokenRemaining: number;
 }
 
+// Hard cap on the user-supplied message length passed to Claude. Both the
+// dashboard route and the WhatsApp handler clamp at this length defensively
+// so a single jumbo payload cannot inflate token usage past the budget guard.
+const MAX_USER_MESSAGE_CHARS = 1000;
+
 export async function processMessage(
   userId: string,
   message: string,
 ): Promise<ProcessMessageResult> {
+  // Per-minute burst throttle. Sits ahead of the classifier and budget checks
+  // so a scripted attacker cannot even trigger the cheap Haiku classifier.
+  const throttle = checkPerMinuteThrottle(userId);
+  if (!throttle.allowed) {
+    return {
+      reply: `You are sending messages too quickly. Try again in about ${throttle.retryAfterSeconds} seconds.`,
+      intent: "rate_limited",
+      dailyRemaining: 0,
+      monthlyTokenRemaining: 0,
+    };
+  }
+
+  // Clamp incoming user text. Anything past the cap is silently truncated for
+  // the AI; users almost never need more than 1k characters for a goal update.
+  const safeMessage =
+    message.length > MAX_USER_MESSAGE_CHARS
+      ? message.slice(0, MAX_USER_MESSAGE_CHARS)
+      : message;
+
   const ctx = await assembleContext(userId);
 
   const initialBudget = checkBudgetForUser(ctx.user);
@@ -28,7 +53,7 @@ export async function processMessage(
     };
   }
 
-  const classification = await classifyIntentWithFallback(message, initialBudget.monthlyTokenRemaining);
+  const classification = await classifyIntentWithFallback(safeMessage, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
 
   // If the classifier used Claude (AI fallback), apply those tokens to a provisional
@@ -63,19 +88,19 @@ export async function processMessage(
   if (intent === "off_topic") {
     reply = OFF_TOPIC_REPLY;
   } else if (intent === "morning_ritual") {
-    const result = await runMorningRitual(ctx, message);
+    const result = await runMorningRitual(ctx, safeMessage);
     reply = result.response;
     totalInputTokens += result.inputTokens;
     totalOutputTokens += result.outputTokens;
     totalCacheHitTokens += result.cacheHitTokens;
   } else if (intent === "evening_ritual") {
-    const result = await runEveningRitual(ctx, message);
+    const result = await runEveningRitual(ctx, safeMessage);
     reply = result.response;
     totalInputTokens += result.inputTokens;
     totalOutputTokens += result.outputTokens;
     totalCacheHitTokens += result.cacheHitTokens;
   } else {
-    const result = await runCheckIn(ctx, message, intent);
+    const result = await runCheckIn(ctx, safeMessage, intent);
     reply = result.response;
     totalInputTokens += result.inputTokens;
     totalOutputTokens += result.outputTokens;

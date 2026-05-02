@@ -3,6 +3,7 @@ import { requireAuth } from "../middlewares/requireAuth.js";
 import { processMessage } from "../lib/ai/processor.js";
 import { refreshMemorySummary } from "../lib/ai/memory.js";
 import { loadFreshBudget, recordUsage } from "../lib/ai/usage.js";
+import { checkPerMinuteThrottle } from "../lib/ai/throttle.js";
 
 const router: IRouter = Router();
 
@@ -14,12 +15,25 @@ router.post("/ai/message", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "message must be a non-empty string" });
     return;
   }
-  if (message.length > 2000) {
-    res.status(400).json({ error: "message must be 2000 characters or fewer" });
+  // Tightened from 2000 to 1000 chars. A goal coaching message never needs more,
+  // and a smaller window limits prompt-injection payload size.
+  if (message.length > 1000) {
+    res.status(400).json({ error: "message must be 1000 characters or fewer" });
     return;
   }
 
   const result = await processMessage(userId, message);
+
+  // Surface throttle / budget refusals as the right HTTP status so the client
+  // can react (and so abusers see 429s, not 200s).
+  if (result.intent === "rate_limited") {
+    res.status(429).json({ error: result.reply });
+    return;
+  }
+  if (result.intent === "budget_exceeded") {
+    res.status(429).json({ error: result.reply });
+    return;
+  }
 
   res.json({
     reply: result.reply,
@@ -33,6 +47,16 @@ router.post("/ai/message", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/ai/memory/refresh", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
+
+  // Per-minute throttle: a script could otherwise burn the user's monthly
+  // token budget in a few seconds by hammering this Haiku-backed endpoint.
+  const throttle = checkPerMinuteThrottle(userId);
+  if (!throttle.allowed) {
+    res.status(429).json({
+      error: `Too many requests. Try again in about ${throttle.retryAfterSeconds} seconds.`,
+    });
+    return;
+  }
 
   const { budget } = await loadFreshBudget(userId);
   if (!budget.allowed) {
