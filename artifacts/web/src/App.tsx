@@ -18,6 +18,10 @@ import ReviewPage from "@/pages/review";
 import AccountPage from "@/pages/account";
 import WhatsAppPage from "@/pages/whatsapp";
 import SharePage from "@/pages/share";
+import AdminOverviewPage from "@/pages/admin";
+import AdminUsersPage from "@/pages/admin/users";
+import AdminUserDetailPage from "@/pages/admin/user-detail";
+import AdminPlansPage from "@/pages/admin/plans";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -162,7 +166,31 @@ function ClerkProviderWithRoutes() {
           <Route path="/share/:token">
             {(params) => <SharePage token={params.token} />}
           </Route>
-          
+
+          <Route path="/admin">
+            <Show when="signed-in"><AdminOverviewPage /></Show>
+            <Show when="signed-out"><Redirect to="/" /></Show>
+          </Route>
+
+          <Route path="/admin/users">
+            <Show when="signed-in"><AdminUsersPage /></Show>
+            <Show when="signed-out"><Redirect to="/" /></Show>
+          </Route>
+
+          <Route path="/admin/users/:id">
+            {(params) => (
+              <>
+                <Show when="signed-in"><AdminUserDetailPage id={params.id} /></Show>
+                <Show when="signed-out"><Redirect to="/" /></Show>
+              </>
+            )}
+          </Route>
+
+          <Route path="/admin/plans">
+            <Show when="signed-in"><AdminPlansPage /></Show>
+            <Show when="signed-out"><Redirect to="/" /></Show>
+          </Route>
+
           <Route component={NotFound} />
         </Switch>
       </QueryClientProvider>

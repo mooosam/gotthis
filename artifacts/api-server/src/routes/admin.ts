@@ -7,6 +7,9 @@ import {
   goalsTable,
   dailyLogsTable,
   usageTrackingTable,
+  magicLinksTable,
+  memorySummariesTable,
+  emailMessagesTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { requireAdmin } from "../middlewares/requireAdmin";
@@ -310,7 +313,12 @@ router.delete("/admin/users/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  // Cascade delete user-owned data so we don't leave orphan rows.
+  // Cascade delete every table that has a userId FK so the final users-row
+  // delete doesn't fail with a foreign key constraint violation.
+  // Milestones cascade through goals automatically.
+  await db.delete(magicLinksTable).where(eq(magicLinksTable.userId, id));
+  await db.delete(memorySummariesTable).where(eq(memorySummariesTable.userId, id));
+  await db.delete(emailMessagesTable).where(eq(emailMessagesTable.userId, id));
   await db.delete(goalsTable).where(eq(goalsTable.userId, id));
   await db.delete(dailyLogsTable).where(eq(dailyLogsTable.userId, id));
   await db.delete(usageTrackingTable).where(eq(usageTrackingTable.userId, id));

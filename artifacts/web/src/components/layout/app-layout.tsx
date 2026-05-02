@@ -12,7 +12,8 @@ import {
   Menu,
   Moon,
   Sun,
-  Smartphone
+  Smartphone,
+  Shield
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,14 +31,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/components/theme-provider";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { data: profile, isLoading } = useGetMyProfile();
-  
+  const isAdminPage = location.startsWith("/admin");
+
   useEffect(() => {
-    if (!isLoading && profile && !profile.onboardingCompleted) {
+    // Don't bounce admins out of the admin section if they happen to not have
+    // onboarding finished yet — they're not really "users" of the product flow.
+    if (!isLoading && profile && !profile.onboardingCompleted && !isAdminPage) {
       setLocation("/onboarding");
     }
-  }, [profile, isLoading, setLocation]);
+  }, [profile, isLoading, setLocation, isAdminPage]);
 
   if (isLoading) {
     return (
@@ -52,9 +56,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      <Sidebar className="hidden md:flex w-64 flex-col border-r bg-sidebar" />
+      <Sidebar className="hidden md:flex w-64 flex-col border-r bg-sidebar" isAdmin={profile?.isAdmin === true} />
       <div className="flex-1 flex flex-col min-w-0">
-        <MobileNav />
+        <MobileNav isAdmin={profile?.isAdmin === true} />
         <main className="flex-1 overflow-auto p-4 md:p-8">
           <div className="max-w-6xl mx-auto">
             {children}
@@ -65,7 +69,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Sidebar({ className }: { className?: string }) {
+function Sidebar({ className, isAdmin }: { className?: string; isAdmin: boolean }) {
   const [location] = useLocation();
 
   const navItems = [
@@ -73,6 +77,7 @@ function Sidebar({ className }: { className?: string }) {
     { href: "/goals", label: "Goals", icon: Target },
     { href: `/review/${new Date().toISOString().split('T')[0]}`, label: "Today's Review", icon: CalendarDays },
     { href: "/whatsapp", label: "WhatsApp", icon: Smartphone },
+    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
   return (
@@ -82,7 +87,10 @@ function Sidebar({ className }: { className?: string }) {
       </div>
       <nav className="flex-1 px-4 space-y-2">
         {navItems.map((item) => {
-          const isActive = location === item.href || (item.href.startsWith("/review/") && location.startsWith("/review/"));
+          const isActive =
+            location === item.href ||
+            (item.href.startsWith("/review/") && location.startsWith("/review/")) ||
+            (item.href === "/admin" && location.startsWith("/admin"));
           return (
             <Link key={item.href} href={item.href}>
               <Button
@@ -104,7 +112,7 @@ function Sidebar({ className }: { className?: string }) {
   );
 }
 
-function MobileNav() {
+function MobileNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <header className="flex md:hidden h-16 items-center justify-between px-4 border-b bg-sidebar">
       <h2 className="text-xl font-serif font-bold text-sidebar-foreground">The Ritual</h2>
@@ -116,7 +124,7 @@ function MobileNav() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-64 p-0 bg-sidebar border-r">
-          <Sidebar className="flex h-full flex-col" />
+          <Sidebar className="flex h-full flex-col" isAdmin={isAdmin} />
         </SheetContent>
       </Sheet>
     </header>
