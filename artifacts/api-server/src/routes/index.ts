@@ -14,6 +14,7 @@ import whatsappRouter from "./whatsapp";
 import emailRouter from "./email";
 import shareRouter from "./share";
 import skipCreditsRouter from "./skip-credits";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(whatsappRouter);
 router.use(emailRouter);
 router.use(shareRouter);
 router.use(skipCreditsRouter);
+router.use(adminRouter);
 
 export default router;

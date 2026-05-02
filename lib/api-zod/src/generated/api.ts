@@ -24,6 +24,8 @@ export const GetMyProfileResponse = zod.object({
   phoneHash: zod.string().nullish(),
   timezone: zod.string(),
   tier: zod.string(),
+  isAdmin: zod.boolean(),
+  isSuspended: zod.boolean(),
   onboardingCompleted: zod.boolean(),
   dailyMessageCount: zod.number(),
   dailyMessageCap: zod.number(),
@@ -52,6 +54,8 @@ export const UpdateMyProfileResponse = zod.object({
   phoneHash: zod.string().nullish(),
   timezone: zod.string(),
   tier: zod.string(),
+  isAdmin: zod.boolean(),
+  isSuspended: zod.boolean(),
   onboardingCompleted: zod.boolean(),
   dailyMessageCount: zod.number(),
   dailyMessageCap: zod.number(),
@@ -71,6 +75,8 @@ export const CompleteOnboardingResponse = zod.object({
   phoneHash: zod.string().nullish(),
   timezone: zod.string(),
   tier: zod.string(),
+  isAdmin: zod.boolean(),
+  isSuspended: zod.boolean(),
   onboardingCompleted: zod.boolean(),
   dailyMessageCount: zod.number(),
   dailyMessageCap: zod.number(),
@@ -562,6 +568,303 @@ export const GetDashboardStatsResponse = zod.object({
 export const CreateMagicLinkBody = zod.object({
   targetDate: zod.string().optional(),
   targetGoalId: zod.string().optional(),
+});
+
+/**
+ * @summary System-wide stats for the admin dashboard
+ */
+export const GetAdminStatsResponse = zod.object({
+  totals: zod.object({
+    users: zod.number(),
+    activeUsers: zod.number(),
+    admins: zod.number(),
+    suspended: zod.number(),
+    goals: zod.number(),
+    activeGoals: zod.number(),
+    logs: zod.number(),
+  }),
+  today: zod.object({
+    messages: zod.number(),
+    tokenInput: zod.number(),
+    tokenOutput: zod.number(),
+    tokenCacheHits: zod.number(),
+  }),
+  usageByDay: zod.array(
+    zod.object({
+      date: zod.string(),
+      messages: zod.number(),
+      input: zod.number(),
+      output: zod.number(),
+    }),
+  ),
+  tierBreakdown: zod.array(
+    zod.object({
+      tier: zod.string(),
+      total: zod.number(),
+    }),
+  ),
+  mrrCents: zod.number(),
+});
+
+/**
+ * @summary List all users with optional search and filtering
+ */
+export const AdminListUsersQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  tier: zod.coerce.string().optional(),
+  limit: zod.coerce.number().optional(),
+  offset: zod.coerce.number().optional(),
+});
+
+export const AdminListUsersResponse = zod.object({
+  users: zod.array(
+    zod.object({
+      id: zod.string().describe("Clerk user ID (primary identity key)"),
+      email: zod.string(),
+      phoneHash: zod.string().nullish(),
+      timezone: zod.string(),
+      tier: zod.string(),
+      isAdmin: zod.boolean(),
+      isSuspended: zod.boolean(),
+      onboardingCompleted: zod.boolean(),
+      dailyMessageCount: zod.number(),
+      dailyMessageCap: zod.number(),
+      monthlyTokenCount: zod.number(),
+      monthlyTokenAllowance: zod.number(),
+      newsletterCadence: zod.string(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+  limit: zod.number(),
+  offset: zod.number(),
+});
+
+/**
+ * @summary Get full detail for a single user
+ */
+export const AdminGetUserParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminGetUserResponse = zod.object({
+  user: zod.object({
+    id: zod.string().describe("Clerk user ID (primary identity key)"),
+    email: zod.string(),
+    phoneHash: zod.string().nullish(),
+    timezone: zod.string(),
+    tier: zod.string(),
+    isAdmin: zod.boolean(),
+    isSuspended: zod.boolean(),
+    onboardingCompleted: zod.boolean(),
+    dailyMessageCount: zod.number(),
+    dailyMessageCap: zod.number(),
+    monthlyTokenCount: zod.number(),
+    monthlyTokenAllowance: zod.number(),
+    newsletterCadence: zod.string(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  counts: zod.object({
+    goals: zod.number(),
+    logs: zod.number(),
+  }),
+  recentUsage: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      periodDate: zod.string(),
+      messageCount: zod.number(),
+      tokenInputCount: zod.number(),
+      tokenOutputCount: zod.number(),
+      tokenCacheHitCount: zod.number(),
+    }),
+  ),
+  recentGoals: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      parentGoalId: zod.string().nullish(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      category: zod.string(),
+      deadline: zod.string().nullish(),
+      status: zod.string(),
+      progress: zod.number(),
+      cadence: zod.string(),
+      goalType: zod.string(),
+      targetValue: zod.number().nullish(),
+      targetUnit: zod.string().nullish(),
+      currentValue: zod.number(),
+      successCriteria: zod.string().nullish(),
+      currentStreak: zod.number(),
+      longestStreak: zod.number(),
+      lastStreakDate: zod
+        .string()
+        .nullish()
+        .describe(
+          "yyyy-MM-dd date of the last streak activity (in user's timezone)",
+        ),
+      shareToken: zod.string().nullish(),
+      pausedAt: zod
+        .string()
+        .nullish()
+        .describe(
+          "ISO timestamp when this goal was paused (edgeless mode); null = active",
+        ),
+      pauseReason: zod.string().nullish(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Update a user's tier, caps, admin flag, or suspension state
+ */
+export const AdminUpdateUserParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminUpdateUserBody = zod.object({
+  tier: zod.string().optional(),
+  dailyMessageCap: zod.number().optional(),
+  monthlyTokenAllowance: zod.number().optional(),
+  monthlySkipCredits: zod.number().optional(),
+  isAdmin: zod.boolean().optional(),
+  isSuspended: zod.boolean().optional(),
+  email: zod.string().optional(),
+  timezone: zod.string().optional(),
+});
+
+export const AdminUpdateUserResponse = zod.object({
+  id: zod.string().describe("Clerk user ID (primary identity key)"),
+  email: zod.string(),
+  phoneHash: zod.string().nullish(),
+  timezone: zod.string(),
+  tier: zod.string(),
+  isAdmin: zod.boolean(),
+  isSuspended: zod.boolean(),
+  onboardingCompleted: zod.boolean(),
+  dailyMessageCount: zod.number(),
+  dailyMessageCap: zod.number(),
+  monthlyTokenCount: zod.number(),
+  monthlyTokenAllowance: zod.number(),
+  newsletterCadence: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Permanently delete a user and their owned data
+ */
+export const AdminDeleteUserParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
+ * @summary Reset a user's caps to the defaults of their currently assigned plan
+ */
+export const AdminApplyPlanParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AdminApplyPlanResponse = zod.object({
+  id: zod.string().describe("Clerk user ID (primary identity key)"),
+  email: zod.string(),
+  phoneHash: zod.string().nullish(),
+  timezone: zod.string(),
+  tier: zod.string(),
+  isAdmin: zod.boolean(),
+  isSuspended: zod.boolean(),
+  onboardingCompleted: zod.boolean(),
+  dailyMessageCount: zod.number(),
+  dailyMessageCap: zod.number(),
+  monthlyTokenCount: zod.number(),
+  monthlyTokenAllowance: zod.number(),
+  newsletterCadence: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary List all subscription plans
+ */
+export const AdminListPlansResponse = zod.object({
+  plans: zod.array(
+    zod.object({
+      slug: zod.string(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      dailyMessageCap: zod.number(),
+      monthlyTokenAllowance: zod.number(),
+      monthlySkipCredits: zod.number(),
+      priceCents: zod.number(),
+      billingPeriod: zod.string(),
+      isActive: zod.boolean(),
+      sortOrder: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create a new subscription plan
+ */
+export const AdminCreatePlanBody = zod.object({
+  slug: zod.string(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  dailyMessageCap: zod.number().optional(),
+  monthlyTokenAllowance: zod.number().optional(),
+  monthlySkipCredits: zod.number().optional(),
+  priceCents: zod.number().optional(),
+  billingPeriod: zod.string().optional(),
+  isActive: zod.boolean().optional(),
+  sortOrder: zod.number().optional(),
+});
+
+/**
+ * @summary Update a subscription plan
+ */
+export const AdminUpdatePlanParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const AdminUpdatePlanBody = zod.object({
+  name: zod.string().optional(),
+  description: zod.string().optional(),
+  dailyMessageCap: zod.number().optional(),
+  monthlyTokenAllowance: zod.number().optional(),
+  monthlySkipCredits: zod.number().optional(),
+  priceCents: zod.number().optional(),
+  billingPeriod: zod.string().optional(),
+  isActive: zod.boolean().optional(),
+  sortOrder: zod.number().optional(),
+});
+
+export const AdminUpdatePlanResponse = zod.object({
+  slug: zod.string(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  dailyMessageCap: zod.number(),
+  monthlyTokenAllowance: zod.number(),
+  monthlySkipCredits: zod.number(),
+  priceCents: zod.number(),
+  billingPeriod: zod.string(),
+  isActive: zod.boolean(),
+  sortOrder: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete a subscription plan (must have no users on it)
+ */
+export const AdminDeletePlanParams = zod.object({
+  slug: zod.coerce.string(),
 });
 
 /**

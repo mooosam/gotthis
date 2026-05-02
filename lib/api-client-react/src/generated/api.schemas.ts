@@ -21,6 +21,8 @@ export interface User {
   phoneHash?: string | null;
   timezone: string;
   tier: string;
+  isAdmin: boolean;
+  isSuspended: boolean;
   onboardingCompleted: boolean;
   dailyMessageCount: number;
   dailyMessageCap: number;
@@ -279,11 +281,140 @@ export interface MagicLinkResolved {
   targetGoalId?: string | null;
 }
 
+export interface Plan {
+  slug: string;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  dailyMessageCap: number;
+  monthlyTokenAllowance: number;
+  monthlySkipCredits: number;
+  priceCents: number;
+  billingPeriod: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AdminStatsTotals = {
+  users: number;
+  activeUsers: number;
+  admins: number;
+  suspended: number;
+  goals: number;
+  activeGoals: number;
+  logs: number;
+};
+
+export type AdminStatsToday = {
+  messages: number;
+  tokenInput: number;
+  tokenOutput: number;
+  tokenCacheHits: number;
+};
+
+export type AdminStatsUsageByDayItem = {
+  date: string;
+  messages: number;
+  input: number;
+  output: number;
+};
+
+export type AdminStatsTierBreakdownItem = {
+  tier: string;
+  total: number;
+};
+
+export interface AdminStats {
+  totals: AdminStatsTotals;
+  today: AdminStatsToday;
+  usageByDay: AdminStatsUsageByDayItem[];
+  tierBreakdown: AdminStatsTierBreakdownItem[];
+  mrrCents: number;
+}
+
+export interface AdminUserList {
+  users: User[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export type AdminUserDetailCounts = {
+  goals: number;
+  logs: number;
+};
+
+export type AdminUserDetailRecentUsageItem = {
+  id: string;
+  userId: string;
+  periodDate: string;
+  messageCount: number;
+  tokenInputCount: number;
+  tokenOutputCount: number;
+  tokenCacheHitCount: number;
+};
+
+export interface AdminUserDetail {
+  user: User;
+  counts: AdminUserDetailCounts;
+  recentUsage: AdminUserDetailRecentUsageItem[];
+  recentGoals: Goal[];
+}
+
+export interface AdminUpdateUserBody {
+  tier?: string;
+  dailyMessageCap?: number;
+  monthlyTokenAllowance?: number;
+  monthlySkipCredits?: number;
+  isAdmin?: boolean;
+  isSuspended?: boolean;
+  email?: string;
+  timezone?: string;
+}
+
+export interface AdminPlanList {
+  plans: Plan[];
+}
+
+export interface AdminPlanInput {
+  slug: string;
+  name: string;
+  description?: string;
+  dailyMessageCap?: number;
+  monthlyTokenAllowance?: number;
+  monthlySkipCredits?: number;
+  priceCents?: number;
+  billingPeriod?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export interface AdminPlanUpdateBody {
+  name?: string;
+  description?: string;
+  dailyMessageCap?: number;
+  monthlyTokenAllowance?: number;
+  monthlySkipCredits?: number;
+  priceCents?: number;
+  billingPeriod?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
 export type ListGoalsParams = {
   status?: string;
 };
 
 export type ListDailyLogsParams = {
+  limit?: number;
+  offset?: number;
+};
+
+export type AdminListUsersParams = {
+  search?: string;
+  tier?: string;
   limit?: number;
   offset?: number;
 };

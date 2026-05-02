@@ -4,6 +4,7 @@ import { startWhatsApp, sendToJid } from "./lib/whatsapp/service.js";
 import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
 import { startNewsletterCron } from "./lib/email/newsletter.js";
 import { startDailyResetCron } from "./lib/goals/daily-reset.js";
+import { seedDefaultPlans } from "./lib/seed-plans.js";
 
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
@@ -35,6 +36,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  seedDefaultPlans().catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Plan seed failed");
+  });
 
   startWhatsApp().catch((startErr) => {
     logger.error({ err: startErr }, "WhatsApp service failed to start");

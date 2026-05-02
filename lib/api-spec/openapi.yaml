@@ -22,6 +22,8 @@ tags:
     description: Dashboard stats operations
   - name: magic-links
     description: Magic link operations
+  - name: admin
+    description: Admin-only operations (user & plan management, system stats)
 paths:
   /healthz:
     get:
@@ -685,6 +687,257 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: System-wide stats for the admin dashboard
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [admin]
+      summary: List all users with optional search and filtering
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: tier
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserList"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/users/{id}:
+    get:
+      operationId: adminGetUser
+      tags: [admin]
+      summary: Get full detail for a single user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: adminUpdateUser
+      tags: [admin]
+      summary: Update a user's tier, caps, admin flag, or suspension state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: adminDeleteUser
+      tags: [admin]
+      summary: Permanently delete a user and their owned data
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Invalid (e.g. self-delete)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/users/{id}/apply-plan:
+    post:
+      operationId: adminApplyPlan
+      tags: [admin]
+      summary: Reset a user's caps to the defaults of their currently assigned plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: User's tier has no matching plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/plans:
+    get:
+      operationId: adminListPlans
+      tags: [admin]
+      summary: List all subscription plans
+      responses:
+        "200":
+          description: Plan list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlanList"
+    post:
+      operationId: adminCreatePlan
+      tags: [admin]
+      summary: Create a new subscription plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlanInput"
+      responses:
+        "201":
+          description: Created plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+        "400":
+          description: Invalid plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/plans/{slug}:
+    patch:
+      operationId: adminUpdatePlan
+      tags: [admin]
+      summary: Update a subscription plan
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlanUpdateBody"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: adminDeletePlan
+      tags: [admin]
+      summary: Delete a subscription plan (must have no users on it)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Users still on this plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /magic-links/{token}/resolve:
     get:
       operationId: resolveMagicLink
@@ -742,6 +995,10 @@ components:
           type: string
         tier:
           type: string
+        isAdmin:
+          type: boolean
+        isSuspended:
+          type: boolean
         onboardingCompleted:
           type: boolean
         dailyMessageCount:
@@ -763,6 +1020,8 @@ components:
         - email
         - timezone
         - tier
+        - isAdmin
+        - isSuspended
         - onboardingCompleted
         - dailyMessageCount
         - dailyMessageCap
@@ -1129,3 +1388,276 @@ components:
           type: ["string", "null"]
       required:
         - userId
+
+    Plan:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        dailyMessageCap:
+          type: integer
+        monthlyTokenAllowance:
+          type: integer
+        monthlySkipCredits:
+          type: integer
+        priceCents:
+          type: integer
+        billingPeriod:
+          type: string
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - slug
+        - name
+        - dailyMessageCap
+        - monthlyTokenAllowance
+        - monthlySkipCredits
+        - priceCents
+        - billingPeriod
+        - isActive
+        - sortOrder
+        - createdAt
+        - updatedAt
+
+    AdminStats:
+      type: object
+      properties:
+        totals:
+          type: object
+          properties:
+            users:
+              type: integer
+            activeUsers:
+              type: integer
+            admins:
+              type: integer
+            suspended:
+              type: integer
+            goals:
+              type: integer
+            activeGoals:
+              type: integer
+            logs:
+              type: integer
+          required:
+            - users
+            - activeUsers
+            - admins
+            - suspended
+            - goals
+            - activeGoals
+            - logs
+        today:
+          type: object
+          properties:
+            messages:
+              type: integer
+            tokenInput:
+              type: integer
+            tokenOutput:
+              type: integer
+            tokenCacheHits:
+              type: integer
+          required:
+            - messages
+            - tokenInput
+            - tokenOutput
+            - tokenCacheHits
+        usageByDay:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              messages:
+                type: integer
+              input:
+                type: integer
+              output:
+                type: integer
+            required:
+              - date
+              - messages
+              - input
+              - output
+        tierBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              tier:
+                type: string
+              total:
+                type: integer
+            required:
+              - tier
+              - total
+        mrrCents:
+          type: integer
+      required:
+        - totals
+        - today
+        - usageByDay
+        - tierBreakdown
+        - mrrCents
+
+    AdminUserList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required:
+        - users
+        - total
+        - limit
+        - offset
+
+    AdminUserDetail:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        counts:
+          type: object
+          properties:
+            goals:
+              type: integer
+            logs:
+              type: integer
+          required:
+            - goals
+            - logs
+        recentUsage:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              userId:
+                type: string
+              periodDate:
+                type: string
+              messageCount:
+                type: integer
+              tokenInputCount:
+                type: integer
+              tokenOutputCount:
+                type: integer
+              tokenCacheHitCount:
+                type: integer
+            required:
+              - id
+              - userId
+              - periodDate
+              - messageCount
+              - tokenInputCount
+              - tokenOutputCount
+              - tokenCacheHitCount
+        recentGoals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Goal"
+      required:
+        - user
+        - counts
+        - recentUsage
+        - recentGoals
+
+    AdminUpdateUserBody:
+      type: object
+      properties:
+        tier:
+          type: string
+        dailyMessageCap:
+          type: integer
+        monthlyTokenAllowance:
+          type: integer
+        monthlySkipCredits:
+          type: integer
+        isAdmin:
+          type: boolean
+        isSuspended:
+          type: boolean
+        email:
+          type: string
+        timezone:
+          type: string
+
+    AdminPlanList:
+      type: object
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+      required:
+        - plans
+
+    AdminPlanInput:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        dailyMessageCap:
+          type: integer
+        monthlyTokenAllowance:
+          type: integer
+        monthlySkipCredits:
+          type: integer
+        priceCents:
+          type: integer
+        billingPeriod:
+          type: string
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+      required:
+        - slug
+        - name
+
+    AdminPlanUpdateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        dailyMessageCap:
+          type: integer
+        monthlyTokenAllowance:
+          type: integer
+        monthlySkipCredits:
+          type: integer
+        priceCents:
+          type: integer
+        billingPeriod:
+          type: string
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer

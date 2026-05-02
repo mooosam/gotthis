@@ -14,6 +14,8 @@ export interface User {
   phoneHash?: string | null;
   timezone: string;
   tier: string;
+  isAdmin: boolean;
+  isSuspended: boolean;
   onboardingCompleted: boolean;
   dailyMessageCount: number;
   dailyMessageCap: number;

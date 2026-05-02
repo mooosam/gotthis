@@ -16,6 +16,8 @@ export const usersTable = pgTable("users", {
   whatsappJid: text("whatsapp_jid"),
   timezone: text("timezone").notNull().default("UTC"),
   tier: text("tier").notNull().default("free"),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  isSuspended: boolean("is_suspended").notNull().default(false),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   dailyMessageCount: integer("daily_message_count").notNull().default(0),
   dailyMessageResetAt: timestamp("daily_message_reset_at", { withTimezone: true }),

@@ -1,33 +1,34 @@
 import type { Request, Response, NextFunction } from "express";
+import type { User } from "@workspace/db";
 
-const ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS ?? "")
+const LEGACY_ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS ?? "")
   .split(",")
   .map((id) => id.trim())
   .filter(Boolean);
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-
+// requireAdmin must run AFTER requireAuth (which attaches req.user).
+//
+// Admin status is now stored on the users table (isAdmin column). The legacy
+// ADMIN_USER_IDS env var is still honoured as a break-glass override so the
+// operator can rescue access if the DB flag gets cleared.
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   const userId = (req as typeof req & { userId?: string }).userId;
+  const user = (req as typeof req & { user?: User }).user;
 
-  if (!userId) {
+  if (!userId || !user) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  if (ADMIN_USER_IDS.length === 0) {
-    if (IS_PRODUCTION) {
-      res.status(403).json({ error: "Forbidden: admin access not configured" });
-      return;
-    }
+  if (user.isAdmin) {
     next();
     return;
   }
 
-  if (!ADMIN_USER_IDS.includes(userId)) {
-    res.status(403).json({ error: "Forbidden" });
+  if (LEGACY_ADMIN_USER_IDS.includes(userId)) {
+    next();
     return;
   }
 
-  next();
+  res.status(403).json({ error: "Forbidden" });
 }
