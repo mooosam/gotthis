@@ -254,6 +254,26 @@ export async function runCheckIn(
   const staticContextBlock = buildStaticContextBlock(ctx);
   const recentLogsBlock = buildRecentLogsBlock(ctx);
 
+  // When a goal_update intent matched no active goals, reply directly without a
+  // second AI call. Tell the user nothing was saved and list their active goals
+  // so they can rephrase.
+  if (intent === "goal_update" && savedUpdates.length === 0) {
+    let noMatchReply: string;
+    if (ctx.goals.length === 0) {
+      noMatchReply =
+        "I couldn't find any active goals to log that against. Add a goal first and then send your update.";
+    } else {
+      const goalList = ctx.goals.map((g) => `- ${g.title}`).join("\n");
+      noMatchReply = `I wasn't able to match that to any of your active goals, so nothing was saved.\n\nYour active goals are:\n${goalList}\n\nCould you rephrase your update mentioning one of these goals?`;
+    }
+    return {
+      response: noMatchReply,
+      inputTokens: extractionInputTokens,
+      outputTokens: extractionOutputTokens,
+      cacheHitTokens: extractionCacheHitTokens,
+    };
+  }
+
   let instructionSuffix: string;
   if (intent === "goal_update" && savedUpdates.length > 0) {
     const updateSummary = savedUpdates
@@ -263,9 +283,6 @@ export async function runCheckIn(
       })
       .join(", ");
     instructionSuffix = `The user reported goal progress. Progress has been saved: ${updateSummary}. Use the goal title to calculate concrete numbers remaining (e.g. if a '50 pushups' goal is 30% done, tell them they have 35 left). Acknowledge what they accomplished and state exactly how much is left. Keep your response to 2-3 sentences. Plain text only, no markdown, no emojis.`;
-  } else if (intent === "goal_update") {
-    instructionSuffix =
-      "The user is sharing a goal update. Acknowledge what they said and ask a focused follow-up about which goal they are working on. Keep your response to 3 sentences. Plain text only.";
   } else {
     instructionSuffix =
       "The user is checking in mid-day. Use the goal progress data above to answer precisely. If they ask how much is left for a goal, calculate it from the 'Progress today' percentage and the numeric target in the goal title (e.g. 70% remaining of a '50 pushups per day' goal = 35 pushups left). Be specific with numbers. Keep your response to 2-3 sentences. Plain text only, no markdown.";
