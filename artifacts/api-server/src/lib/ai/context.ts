@@ -121,16 +121,21 @@ export function buildStaticContextBlock(ctx: UserContext): string {
 
   if (ctx.goals.length > 0) {
     lines.push("\n=== ACTIVE GOALS ===");
-    lines.push("(Progress shown is TODAY's completion percentage of the daily target, not a long-term metric.)");
     for (const g of ctx.goals) {
+      const isDaily = g.cadence !== "ongoing";
       lines.push(`[${g.id}] ${g.title}`);
       lines.push(`  Category: ${g.category}`);
+      lines.push(`  Cadence: ${isDaily ? "daily (resets each morning)" : "ongoing (accumulates over time)"}`);
       const pct = g.progress ?? 0;
       const remaining = Math.max(0, 100 - pct);
-      lines.push(`  Progress today: ${pct}% done, ${remaining}% remaining`);
+      if (isDaily) {
+        lines.push(`  Progress today: ${pct}% done, ${remaining}% remaining`);
+      } else {
+        lines.push(`  Overall progress: ${pct}%`);
+      }
       if (g.deadline) lines.push(`  Deadline: ${g.deadline}`);
       if (g.successCriteria) lines.push(`  Success criteria: ${g.successCriteria}`);
-      lines.push(`  Current streak: ${g.currentStreak} days`);
+      if (isDaily) lines.push(`  Current streak: ${g.currentStreak} days`);
     }
   } else {
     lines.push("\n=== ACTIVE GOALS ===");

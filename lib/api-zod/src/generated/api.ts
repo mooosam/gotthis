@@ -98,6 +98,7 @@ export const ListGoalsResponseItem = zod.object({
   status: zod.string(),
   progress: zod.number(),
   successCriteria: zod.string().nullish(),
+  cadence: zod.string(),
   currentStreak: zod.number(),
   longestStreak: zod.number(),
   createdAt: zod.string(),
@@ -114,6 +115,7 @@ export const CreateGoalBody = zod.object({
   category: zod.string().optional(),
   deadline: zod.string().optional(),
   successCriteria: zod.string().optional(),
+  cadence: zod.enum(["daily", "ongoing"]).optional(),
 });
 
 /**
@@ -133,8 +135,10 @@ export const GetGoalResponse = zod.object({
   status: zod.string(),
   progress: zod.number(),
   successCriteria: zod.string().nullish(),
+  cadence: zod.string(),
   currentStreak: zod.number(),
   longestStreak: zod.number(),
+  shareToken: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -154,6 +158,7 @@ export const UpdateGoalBody = zod.object({
   status: zod.string().optional(),
   progress: zod.number().optional(),
   successCriteria: zod.string().optional(),
+  cadence: zod.enum(["daily", "ongoing"]).optional(),
 });
 
 export const UpdateGoalResponse = zod.object({
@@ -166,6 +171,7 @@ export const UpdateGoalResponse = zod.object({
   status: zod.string(),
   progress: zod.number(),
   successCriteria: zod.string().nullish(),
+  cadence: zod.string(),
   currentStreak: zod.number(),
   longestStreak: zod.number(),
   createdAt: zod.string(),

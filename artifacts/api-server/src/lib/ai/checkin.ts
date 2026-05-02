@@ -229,6 +229,25 @@ export async function runCheckIn(
     extractionInputTokens = extracted.inputTokens;
     extractionOutputTokens = extracted.outputTokens;
     extractionCacheHitTokens = extracted.cacheHitTokens;
+
+    if (savedUpdates.length === 0 && ctx.goals.length > 0) {
+      const goalList = ctx.goals.map((g) => `  - ${g.title}`).join("\n");
+      return {
+        response: `I could not match that to any of your active goals. Your current goals are:\n${goalList}\n\nWhich one were you updating, and what progress did you make?`,
+        inputTokens: extractionInputTokens,
+        outputTokens: extractionOutputTokens,
+        cacheHitTokens: extractionCacheHitTokens,
+      };
+    }
+
+    if (savedUpdates.length === 0 && ctx.goals.length === 0) {
+      return {
+        response: "You do not have any active goals set up yet. Head to the dashboard to create your first goal, then come back and tell me about your progress.",
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheHitTokens: 0,
+      };
+    }
   }
 
   const systemPrompt = buildSystemPrompt();

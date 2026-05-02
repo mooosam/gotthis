@@ -83,6 +83,7 @@ const goalSchema = z.object({
   category: z.string().min(1, "Category is required"),
   deadline: z.string().optional(),
   successCriteria: z.string().optional(),
+  cadence: z.enum(["daily", "ongoing"]),
 });
 
 const editGoalSchema = goalSchema.extend({
@@ -102,6 +103,7 @@ interface GoalRow {
   status: string;
   progress: number;
   currentStreak: number;
+  cadence: string;
 }
 
 export default function GoalsPage() {
@@ -128,6 +130,7 @@ export default function GoalsPage() {
       category: "Health",
       deadline: "",
       successCriteria: "",
+      cadence: "daily",
     },
   });
 
@@ -139,6 +142,7 @@ export default function GoalsPage() {
       category: "Health",
       deadline: "",
       successCriteria: "",
+      cadence: "daily",
       progress: 0,
     },
   });
@@ -157,6 +161,7 @@ export default function GoalsPage() {
           category: data.category,
           deadline: data.deadline || undefined,
           successCriteria: data.successCriteria || undefined,
+          cadence: data.cadence,
         },
       });
       invalidateGoals();
@@ -176,6 +181,7 @@ export default function GoalsPage() {
       category: goal.category,
       deadline: goal.deadline || "",
       successCriteria: goal.successCriteria || "",
+      cadence: (goal.cadence === "ongoing" ? "ongoing" : "daily") as "daily" | "ongoing",
       progress: goal.progress,
     });
   };
@@ -191,6 +197,7 @@ export default function GoalsPage() {
           category: data.category,
           deadline: data.deadline || undefined,
           successCriteria: data.successCriteria || undefined,
+          cadence: data.cadence,
           progress: data.progress,
         },
       });
@@ -366,6 +373,28 @@ export default function GoalsPage() {
                     )}
                   />
 
+                  <FormField
+                    control={createForm.control}
+                    name="cadence"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tracking cadence</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select cadence" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
+                            <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <div className="flex justify-end pt-4">
                     <Button
                       type="submit"
@@ -516,9 +545,14 @@ export default function GoalsPage() {
                   </div>
                 </CardContent>
                 <CardFooter className="pt-0 text-xs text-muted-foreground flex justify-between border-t border-border/40 px-6 py-3 mt-4 bg-muted/20">
-                  <div className="flex items-center gap-1">
-                    <Flame className="h-3 w-3" />
-                    <span>{goal.currentStreak} day streak</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <Flame className="h-3 w-3" />
+                      <span>{goal.currentStreak} day streak</span>
+                    </div>
+                    {goal.cadence === "ongoing" && (
+                      <Badge variant="outline" className="text-xs py-0 h-4 font-normal">ongoing</Badge>
+                    )}
                   </div>
                   {goal.deadline && (
                     <span>Due {format(new Date(goal.deadline), "MMM d")}</span>
@@ -616,6 +650,28 @@ export default function GoalsPage() {
                     <FormControl>
                       <Textarea placeholder="How will you know when you've achieved this?" className="resize-none" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="cadence"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tracking cadence</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
+                        <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -85,6 +85,7 @@ const editGoalSchema = z.object({
   deadline: z.string().optional(),
   successCriteria: z.string().optional(),
   status: z.enum(["active", "completed", "paused"]),
+  cadence: z.enum(["daily", "ongoing"]),
 });
 
 type EditGoalValues = z.infer<typeof editGoalSchema>;
@@ -184,6 +185,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
       deadline: "",
       successCriteria: "",
       status: "active",
+      cadence: "daily",
     },
   });
 
@@ -195,6 +197,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
       )
         ? (goal.status as "active" | "completed" | "paused")
         : "active";
+      const cadence = goal.cadence === "ongoing" ? "ongoing" : "daily";
       form.reset({
         title: goal.title,
         description: goal.description || "",
@@ -202,6 +205,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
         deadline: goal.deadline ? new Date(goal.deadline).toISOString().split("T")[0] : "",
         successCriteria: goal.successCriteria || "",
         status,
+        cadence,
       });
       setProgressValue([goal.progress]);
     }
@@ -218,6 +222,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
           deadline: data.deadline || undefined,
           successCriteria: data.successCriteria || undefined,
           status: data.status,
+          cadence: data.cadence,
         }
       });
       
@@ -316,6 +321,9 @@ export default function GoalDetailPage({ id }: { id: string }) {
               >
                 {goal.status}
               </Badge>
+              <Badge variant="outline" className="font-normal capitalize">
+                {goal.cadence === "ongoing" ? "Ongoing" : "Daily"}
+              </Badge>
             </div>
             <h1 className="text-3xl md:text-4xl font-serif font-bold tracking-tight text-foreground" data-testid="goal-title">
               {goal.title}
@@ -339,6 +347,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
                   )
                     ? (goal.status as "active" | "completed" | "paused")
                     : "active";
+                  const cadence = goal.cadence === "ongoing" ? "ongoing" : "daily";
                   form.reset({
                     title: goal.title,
                     description: goal.description || "",
@@ -346,6 +355,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
                     deadline: goal.deadline ? new Date(goal.deadline).toISOString().split("T")[0] : "",
                     successCriteria: goal.successCriteria || "",
                     status,
+                    cadence,
                   });
                 }}>
                   <Edit className="mr-2 h-4 w-4" /> Edit
@@ -416,6 +426,27 @@ export default function GoalDetailPage({ id }: { id: string }) {
                         )}
                       />
                     </div>
+                    <FormField
+                      control={form.control}
+                      name="cadence"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tracking cadence</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="daily">Daily — resets each morning, builds streaks</SelectItem>
+                              <SelectItem value="ongoing">Ongoing — accumulates over time, no daily reset</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       control={form.control}
                       name="deadline"

@@ -45,7 +45,7 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { title, description, category, deadline, successCriteria } = parsed.data;
+  const { title, description, category, deadline, successCriteria, cadence } = parsed.data;
 
   const [goal] = await db
     .insert(goalsTable)
@@ -57,6 +57,7 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
       category: category ?? "general",
       deadline: deadline ?? null,
       successCriteria: successCriteria ?? null,
+      cadence: cadence ?? "daily",
       shareToken: nanoid(16),
     })
     .returning();
@@ -101,7 +102,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { title, description, category, deadline, status, progress, successCriteria } = bodyParsed.data;
+  const { title, description, category, deadline, status, progress, successCriteria, cadence } = bodyParsed.data;
 
   const updates: Partial<typeof goalsTable.$inferInsert> = {};
   if (title !== undefined) updates.title = title;
@@ -111,6 +112,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (status !== undefined) updates.status = status;
   if (progress !== undefined) updates.progress = progress;
   if (successCriteria !== undefined) updates.successCriteria = successCriteria;
+  if (cadence !== undefined) updates.cadence = cadence;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No fields to update" });
