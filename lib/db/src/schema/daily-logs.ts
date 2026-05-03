@@ -8,12 +8,15 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const dailyLogsTable = pgTable(
   "daily_logs",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     logDate: date("log_date").notNull(),
     data: jsonb("data"),
     narrative: text("narrative"),

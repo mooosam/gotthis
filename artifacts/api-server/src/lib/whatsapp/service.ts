@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { hashPhone } from "../phone.js";
 import { processMessage } from "../ai/processor.js";
 import { createReviewMagicLink, getBaseUrl } from "./magic-link.js";
-import { checkWhatsAppRateLimit } from "./rate-limit.js";
+import { checkBudgetForUser } from "../ai/usage.js";
 import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
 import type { User } from "@workspace/db";
@@ -103,9 +103,12 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
     return;
   }
 
-  const rateCheck = await checkWhatsAppRateLimit(user.id);
-  if (!rateCheck.allowed) {
-    await sendTracked(jid, rateCheck.reason ?? "Daily message limit reached.");
+  // Single source of truth for daily/monthly budget — same check the dashboard
+  // route uses. Stops a user who is over their cap before we spend tokens
+  // running the classifier or the ritual handler.
+  const budgetCheck = checkBudgetForUser(user);
+  if (!budgetCheck.allowed) {
+    await sendTracked(jid, budgetCheck.reason ?? "Daily message limit reached.");
     return;
   }
 
@@ -227,6 +230,12 @@ async function connect(phoneForPairing?: string): Promise<void> {
     }
 
     if (connection === "open") {
+      // Clear any queued reconnect from a prior close — otherwise it could
+      // fire mid-connection and create a leaked socket.
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       currentStatus = "open";
       currentQR = null;
       pairingCode = null;
@@ -370,6 +379,10 @@ export async function requestPairingCode(phone: string): Promise<string> {
     }
 
     if (connection === "open") {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       currentStatus = "open";
       currentQR = null;
       pairingCode = null;

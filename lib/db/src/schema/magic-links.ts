@@ -5,10 +5,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const magicLinksTable = pgTable("magic_links", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
   targetDate: text("target_date"),
   targetGoalId: text("target_goal_id"),

@@ -7,10 +7,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const usageTrackingTable = pgTable("usage_tracking", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
   periodDate: date("period_date").notNull(),
   messageCount: integer("message_count").notNull().default(0),
   tokenInputCount: integer("token_input_count").notNull().default(0),

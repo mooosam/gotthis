@@ -1,11 +1,13 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { logger } from "../logger.js";
 
 export type MessageIntent =
   | "morning_ritual"
   | "evening_ritual"
   | "goal_update"
   | "check_in"
-  | "off_topic";
+  | "off_topic"
+  | "error";
 
 const MORNING_PATTERNS = [
   /\bgood morning\b/i,
@@ -168,21 +170,25 @@ export async function classifyIntentWithFallback(
   const trimmed = message.trim();
 
   if (trimmed.length < 10 && !hasAnyKnownPattern(trimmed)) {
+    logger.info({ event: "classifier_path", path: "short_message" }, "classifier path");
     return { intent: "off_topic", inputTokens: 0, outputTokens: 0 };
   }
 
   // Short-circuit injection attempts before spending tokens on Haiku fallback.
   if (looksLikeInjection(trimmed)) {
+    logger.info({ event: "classifier_path", path: "injection_block" }, "classifier path");
     return { intent: "off_topic", inputTokens: 0, outputTokens: 0 };
   }
 
   const keywordResult = classifyIntentKeywords(message);
 
   if (keywordResult !== "check_in" || !isAmbiguous(message)) {
+    logger.info({ event: "classifier_path", path: "keyword_match", intent: keywordResult }, "classifier path");
     return { intent: keywordResult, inputTokens: 0, outputTokens: 0 };
   }
 
   if (monthlyTokenRemaining !== undefined && monthlyTokenRemaining < MIN_TOKENS_FOR_CLAUDE_FALLBACK) {
+    logger.info({ event: "classifier_path", path: "fallback_skipped_low_budget" }, "classifier path");
     return { intent: keywordResult, inputTokens: 0, outputTokens: 0 };
   }
 
@@ -223,13 +229,24 @@ Category:`,
     ];
     const matched = valid.find((v) => raw.includes(v));
 
+    logger.info(
+      {
+        event: "classifier_path",
+        path: "ai_fallback",
+        intent: matched ?? "check_in",
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      },
+      "classifier path",
+    );
+
     return {
       intent: matched ?? "check_in",
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     };
   } catch (error) {
-    console.warn("Intent classification fallback failed", error);
-    return { intent: "check_in", inputTokens: 0, outputTokens: 0 };
+    logger.error({ err: error, event: "classifier_fallback_failed" }, "Intent classification fallback failed");
+    return { intent: "error", inputTokens: 0, outputTokens: 0 };
   }
 }

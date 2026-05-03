@@ -4,14 +4,20 @@ import {
   integer,
   boolean,
   timestamp,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const goalsTable = pgTable("goals", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  parentGoalId: text("parent_goal_id"),
+  userId: text("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  parentGoalId: text("parent_goal_id").references((): AnyPgColumn => goalsTable.id, {
+    onDelete: "set null",
+  }),
   title: text("title").notNull(),
   description: text("description"),
   category: text("category").notNull().default("general"),

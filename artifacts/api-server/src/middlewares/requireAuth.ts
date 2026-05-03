@@ -38,17 +38,9 @@ export async function requireAuth(
     .where(eq(usersTable.id, clerkId));
 
   if (!user) {
-    const claims = auth.sessionClaims ?? {};
-    let email =
-      ((claims["email"] as string | undefined) ??
-        (claims["primaryEmail"] as string | undefined) ??
-        (claims["emailAddress"] as string | undefined) ??
-        "").trim();
-
-    // Session claims usually don't include email — fetch from Clerk directly.
-    if (!email) {
-      email = await fetchClerkEmail(clerkId);
-    }
+    // Authoritative email comes from Clerk's user record — JWT session claims
+    // do not include email by default and shape varies across Clerk versions.
+    const email = await fetchClerkEmail(clerkId);
 
     // Bootstrap admin: any user signing up with the configured admin email is
     // auto-flagged. Lets the operator promote themselves without DB access.

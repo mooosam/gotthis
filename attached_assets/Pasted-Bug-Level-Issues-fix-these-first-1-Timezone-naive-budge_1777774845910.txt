@@ -1,0 +1,46 @@
+Bug-Level Issues (fix these first)
+1. Timezone-naive budget resets
+usage.ts compares dates using new Date().toISOString().split("T")[0] — that's UTC. A user in GMT+5 will have their daily message count reset at 7am their time (midnight UTC), not midnight locally. The timezone field is stored in users but never used for this comparison.
+
+2. Duplicate rate-limit logic
+whatsapp/rate-limit.ts and usage.ts both check the daily message cap with nearly identical logic. The WhatsApp service checks it, then processor.ts checks again. One source of truth — usage.ts:checkBudgetForUser — should be the only caller, with the standalone file removed.
+
+3. Token cache hit extraction is fragile
+usage.ts:getCacheHitTokens() casts to Record<string, unknown> to read cache_read_input_tokens because the Anthropic SDK type doesn't declare it. If the field name changes upstream, cache savings silently stop being tracked. Use proper SDK types or at minimum add a runtime guard and log a warning.
+
+Reliability
+4. Context assembly errors are unhandled
+context.ts:assembleContext() throws if the user is missing, but processor.ts calls it with no try/catch. Other error paths in the processor return user-friendly messages — this one crashes silently. Wrap it with a consistent error response.
+
+5. Magic links are fire-and-forget
+In service.ts, if magic link creation fails the code logs a warning and sends the reply anyway — without the link. The user gets a message referencing a link that isn't there. Either include a fallback URL or don't send until the link is confirmed created.
+
+6. Classifier silently swallows failures
+When the Claude Haiku fallback in classifier.ts fails, it returns "check_in" — the default intent. A failed API call routes the user to the general handler with no signal that something went wrong. Return an explicit "error" intent and handle it in the processor.
+
+7. WhatsApp reconnect timer not cleared on success
+If a reconnectTimer is pending when a successful auth event fires, the queued reconnect could trigger mid-connection and create a socket leak. Clear the timer on connection.update when state is "open".
+
+Security & Validation
+8. No input validation on incoming WhatsApp messages
+Raw message text goes directly from handleIncomingMessage() to processMessage() with no length cap or sanitization. A 50,000-character message hits the AI engine as-is. Add a max-length check (e.g. 2,000 chars) with a polite rejection response.
+
+9. Environment variables not type-safe
+Env vars are accessed with plain string coercion. A missing DATABASE_URL or CLERK_SECRET_KEY fails at runtime, often with an opaque error. Add a Zod env schema at startup that validates and throws a clear message on missing/malformed vars.
+
+10. No foreign key constraints
+userId fields in usage_tracking, daily_logs, memory_summaries, etc. have no explicit FK to users. Deleting a user leaves orphaned rows. Add references(() => usersTable.id, { onDelete: "cascade" }) to each.
+
+Code Quality
+11. Provisional budget check in processor is duplicated logic
+processor.ts manually recalculates remaining token budget after classification to do a provisional check before calling the ritual handler. This logic mirrors usage.ts:checkBudgetForUser. Extract a shared deductAndCheck(used, remaining) utility so they can't diverge.
+
+12. Clerk session claims extraction relies on three fallback field names
+requireAuth.ts tries sessionClaims.email, then sessionClaims.primaryEmail, then sessionClaims.emailAddresses[0]. This is guessing at Clerk's internal shape. Use Clerk's clerkClient.users.getUser(userId) to fetch the authoritative email rather than parsing JWT claims.
+
+Observability
+13. No structured logging for budget events
+Budget resets, cap-reached events, and classifier fallbacks are either silent or inconsistently logged. These are the most operationally important events (they directly affect user experience). Add structured Pino log lines with userId, intent, tokensUsed, and budgetRemaining.
+
+14. No metrics on classifier fallback rate
+If Claude Haiku is being called for 80% of messages (keyword matching isn't working well), you'd never know. A simple counter log per classification path (keyword_match, ai_fallback) gives signal to tune keyword patterns before spending on fallback calls.

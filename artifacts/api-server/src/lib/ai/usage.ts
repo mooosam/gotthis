@@ -2,14 +2,27 @@ import { db, usersTable, usageTrackingTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { User } from "@workspace/db";
+import { logger } from "../logger.js";
 
 /**
  * Typed helper for accessing cache_read_input_tokens from Anthropic usage objects.
  * The SDK's Usage type does not yet declare this field, but Anthropic returns it at runtime.
  */
+let warnedMissingCacheField = false;
 export function getCacheHitTokens(usage: object): number {
   const v = (usage as Record<string, unknown>)["cache_read_input_tokens"];
-  return typeof v === "number" ? v : 0;
+  if (typeof v === "number") return v;
+  // The Anthropic SDK omits this field from its public types but returns it
+  // at runtime. If a future SDK version renames or removes the field, log
+  // once so the silent loss of cache-hit accounting becomes visible.
+  if (v === undefined && !warnedMissingCacheField) {
+    warnedMissingCacheField = true;
+    logger.warn(
+      { usageKeys: Object.keys(usage) },
+      "Anthropic usage object missing cache_read_input_tokens — cache savings may not be tracked",
+    );
+  }
+  return 0;
 }
 
 export interface UsageBudgetCheck {
@@ -19,44 +32,80 @@ export interface UsageBudgetCheck {
   monthlyTokenRemaining: number;
 }
 
+/** UTC date — used by usage_tracking aggregations (operational metric). */
 export function getTodayDate(): string {
   return new Date().toISOString().split("T")[0];
 }
 
-export function checkBudgetForUser(user: User): UsageBudgetCheck {
-  const today = getTodayDate();
-
-  let dailyCount = user.dailyMessageCount;
-  if (
-    !user.dailyMessageResetAt ||
-    user.dailyMessageResetAt.toISOString().split("T")[0] < today
-  ) {
-    dailyCount = 0;
+/**
+ * Returns YYYY-MM-DD in the user's IANA timezone. Used for resetting the
+ * per-user daily message counter so a user in GMT+5 resets at their local
+ * midnight rather than UTC midnight.
+ */
+export function formatDateInTimezone(date: Date, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    // Invalid timezone string — fall back to UTC instead of throwing.
+    return date.toISOString().split("T")[0];
   }
+}
 
+export function checkBudgetForUser(user: User): UsageBudgetCheck {
+  const tz = user.timezone || "UTC";
+  const now = new Date();
+  const todayLocal = formatDateInTimezone(now, tz);
+  const thisMonthLocal = todayLocal.substring(0, 7);
+
+  const lastDailyResetLocal = user.dailyMessageResetAt
+    ? formatDateInTimezone(user.dailyMessageResetAt, tz)
+    : null;
+
+  const dailyNeedsReset = !lastDailyResetLocal || lastDailyResetLocal < todayLocal;
+  const dailyCount = dailyNeedsReset ? 0 : user.dailyMessageCount;
   const dailyRemaining = Math.max(0, user.dailyMessageCap - dailyCount);
 
+  // Compute monthly remaining up-front so both the daily-cap and monthly-cap
+  // return paths report a consistent, timezone-adjusted value.
+  const lastMonthlyResetLocal = user.monthlyTokenResetAt
+    ? formatDateInTimezone(user.monthlyTokenResetAt, tz).substring(0, 7)
+    : null;
+  const monthlyNeedsReset = !lastMonthlyResetLocal || lastMonthlyResetLocal < thisMonthLocal;
+  const monthlyTokenCount = monthlyNeedsReset ? 0 : user.monthlyTokenCount;
+  const monthlyTokenRemaining = Math.max(0, user.monthlyTokenAllowance - monthlyTokenCount);
+
   if (dailyRemaining === 0) {
+    logger.info(
+      {
+        userId: user.id,
+        event: "daily_cap_reached",
+        cap: user.dailyMessageCap,
+        timezone: tz,
+      },
+      "Daily message cap reached",
+    );
     return {
       allowed: false,
       reason: `Daily message limit of ${user.dailyMessageCap} reached. Your limit resets at midnight.`,
       dailyRemaining: 0,
-      monthlyTokenRemaining: Math.max(0, user.monthlyTokenAllowance - user.monthlyTokenCount),
+      monthlyTokenRemaining,
     };
   }
 
-  const thisMonth = today.substring(0, 7);
-  let monthlyTokenCount = user.monthlyTokenCount;
-  if (
-    !user.monthlyTokenResetAt ||
-    user.monthlyTokenResetAt.toISOString().substring(0, 7) < thisMonth
-  ) {
-    monthlyTokenCount = 0;
-  }
-
-  const monthlyTokenRemaining = Math.max(0, user.monthlyTokenAllowance - monthlyTokenCount);
-
   if (monthlyTokenRemaining <= 0) {
+    logger.info(
+      {
+        userId: user.id,
+        event: "monthly_token_exhausted",
+        allowance: user.monthlyTokenAllowance,
+      },
+      "Monthly token allowance exhausted",
+    );
     return {
       allowed: false,
       reason: `Monthly token allowance exhausted. Upgrade your plan to continue.`,
@@ -87,9 +136,9 @@ export async function recordUsage(
   outputTokens: number,
   cacheHitTokens: number,
 ): Promise<void> {
+  // usage_tracking aggregates by UTC date — operational metric, not user-facing.
   const today = getTodayDate();
   const now = new Date();
-  const thisMonth = today.substring(0, 7);
 
   const [existing] = await db
     .select()
@@ -129,13 +178,31 @@ export async function recordUsage(
     .where(eq(usersTable.id, userId));
   if (!user) return;
 
+  // User-facing counters reset on the user's local calendar day/month.
+  const tz = user.timezone || "UTC";
+  const todayLocal = formatDateInTimezone(now, tz);
+  const thisMonthLocal = todayLocal.substring(0, 7);
+
   const dailyCountNeedsReset =
     !user.dailyMessageResetAt ||
-    user.dailyMessageResetAt.toISOString().split("T")[0] < today;
+    formatDateInTimezone(user.dailyMessageResetAt, tz) < todayLocal;
 
   const monthlyCountNeedsReset =
     !user.monthlyTokenResetAt ||
-    user.monthlyTokenResetAt.toISOString().substring(0, 7) < thisMonth;
+    formatDateInTimezone(user.monthlyTokenResetAt, tz).substring(0, 7) < thisMonthLocal;
+
+  if (dailyCountNeedsReset) {
+    logger.info(
+      { userId, event: "daily_counter_reset", timezone: tz },
+      "Daily message counter reset",
+    );
+  }
+  if (monthlyCountNeedsReset) {
+    logger.info(
+      { userId, event: "monthly_counter_reset", timezone: tz },
+      "Monthly token counter reset",
+    );
+  }
 
   await db
     .update(usersTable)

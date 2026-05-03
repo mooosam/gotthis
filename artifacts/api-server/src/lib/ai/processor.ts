@@ -41,7 +41,20 @@ export async function processMessage(
       ? message.slice(0, MAX_USER_MESSAGE_CHARS)
       : message;
 
-  const ctx = await assembleContext(userId);
+  // Context assembly can throw if the user record is missing or the DB query
+  // fails. Surface a user-friendly reply rather than letting callers (the AI
+  // dashboard route, WhatsApp handler, etc.) see a 500.
+  let ctx;
+  try {
+    ctx = await assembleContext(userId);
+  } catch (err) {
+    return {
+      reply: "I couldn't load your goal context just now. Please try again in a moment.",
+      intent: "error",
+      dailyRemaining: 0,
+      monthlyTokenRemaining: 0,
+    };
+  }
 
   const initialBudget = checkBudgetForUser(ctx.user);
   if (!initialBudget.allowed) {
@@ -55,6 +68,17 @@ export async function processMessage(
 
   const classification = await classifyIntentWithFallback(safeMessage, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
+
+  // Classifier could not determine intent (Haiku fallback failed). Surface a
+  // user-friendly error rather than silently routing to the general handler.
+  if (intent === "error") {
+    return {
+      reply: "I had trouble understanding that. Please try rephrasing — for example, share what you worked on today or how your morning is going.",
+      intent: "error",
+      dailyRemaining: initialBudget.dailyRemaining,
+      monthlyTokenRemaining: initialBudget.monthlyTokenRemaining,
+    };
+  }
 
   // If the classifier used Claude (AI fallback), apply those tokens to a provisional
   // in-memory budget check before running the more expensive handler call.  This
