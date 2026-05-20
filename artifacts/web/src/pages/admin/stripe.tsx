@@ -85,6 +85,16 @@ function useStoredKey() {
   });
 }
 
+function useStoredWebhookSecret() {
+  return useQuery({
+    queryKey: ["stripe-webhook-secret"],
+    queryFn: async () => {
+      const r = await apiFetch("/api/admin/stripe/webhook-secret");
+      return r.json() as Promise<{ stored: boolean; preview: string | null; updatedAt?: string }>;
+    },
+  });
+}
+
 // ── API Key Panel ───────────────────────────────────────────────────────────
 
 function ApiKeyPanel() {
@@ -233,6 +243,127 @@ function ApiKeyPanel() {
             Products created. Users can now subscribe to Free, Pro & Elite plans.
           </p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Webhook Secret Panel ────────────────────────────────────────────────────
+
+function WebhookSecretPanel() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { data, isLoading } = useStoredWebhookSecret();
+  const [inputSecret, setInputSecret] = useState("");
+  const [show, setShow] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: async (secret: string) => {
+      const r = await apiFetch("/api/admin/stripe/webhook-secret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret }),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Failed to save"); }
+      return r.json();
+    },
+    onSuccess: () => {
+      setInputSecret("");
+      qc.invalidateQueries({ queryKey: ["stripe-webhook-secret"] });
+      toast({ title: "Webhook secret saved", description: "Billing events will now be verified." });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiFetch("/api/admin/stripe/webhook-secret", { method: "DELETE" });
+      if (!r.ok) throw new Error("Failed to remove");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stripe-webhook-secret"] });
+      toast({ title: "Webhook secret removed" });
+    },
+    onError: () => toast({ title: "Error removing secret", variant: "destructive" }),
+  });
+
+  return (
+    <Card className="border-border/40 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="font-serif flex items-center gap-2 text-base">
+          <Key className="h-4 w-4 text-muted-foreground" />
+          Billing Webhook Secret
+        </CardTitle>
+        <CardDescription>
+          Required so Stripe can verify incoming billing events. Find yours in the Stripe webhook dashboard.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : data?.stored ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/30 px-4 py-2.5">
+            <div>
+              <p className="text-sm font-medium font-mono">{data.preview}</p>
+              {data.updatedAt && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Saved {new Date(data.updatedAt).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive h-8"
+              onClick={() => removeMutation.mutate()}
+              disabled={removeMutation.isPending}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              Remove
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                ref={inputRef}
+                type={show ? "text" : "password"}
+                placeholder="whsec_…"
+                value={inputSecret}
+                onChange={(e) => setInputSecret(e.target.value)}
+                className="pr-10 font-mono text-sm"
+                onKeyDown={(e) => { if (e.key === "Enter" && inputSecret.trim()) saveMutation.mutate(inputSecret.trim()); }}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShow((s) => !s)}
+              >
+                {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <Button
+              onClick={() => saveMutation.mutate(inputSecret.trim())}
+              disabled={!inputSecret.trim().startsWith("whsec_") || saveMutation.isPending}
+              size="sm"
+            >
+              Save
+            </Button>
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Find your signing secret at{" "}
+          <a
+            href="https://dashboard.stripe.com/webhooks"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            dashboard.stripe.com/webhooks
+          </a>
+          . Register endpoint: <code className="text-xs bg-muted px-1 py-0.5 rounded">/api/billing/webhook</code>
+        </p>
       </CardContent>
     </Card>
   );
@@ -611,6 +742,9 @@ export default function AdminStripePage() {
 
         {/* API Key Panel — always visible */}
         <ApiKeyPanel />
+
+        {/* Webhook Secret Panel */}
+        <WebhookSecretPanel />
 
         {/* Not-connected banner */}
         {!connected && (

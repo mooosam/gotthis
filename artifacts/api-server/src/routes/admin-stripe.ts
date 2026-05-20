@@ -59,6 +59,57 @@ router.delete("/admin/stripe/key", async (_req, res) => {
   }
 });
 
+// ── Webhook secret management ────────────────────────────────────────────────
+
+router.get("/admin/stripe/webhook-secret", async (_req, res) => {
+  try {
+    const [row] = await db
+      .select()
+      .from(appSettingsTable)
+      .where(eq(appSettingsTable.key, "stripe_billing_webhook_secret"))
+      .limit(1);
+    if (!row) return res.json({ stored: false, preview: null });
+    const val = row.value;
+    const preview = `${val.slice(0, 6)}…${val.slice(-4)}`;
+    res.json({ stored: true, preview, updatedAt: row.updatedAt });
+  } catch (err) {
+    logger.error({ err }, "Failed to get webhook secret");
+    res.status(500).json({ error: "Failed to retrieve secret" });
+  }
+});
+
+router.post("/admin/stripe/webhook-secret", async (req, res) => {
+  const { secret } = req.body as { secret?: string };
+  if (!secret || typeof secret !== "string" || secret.trim().length < 10) {
+    return res.status(400).json({ error: "A valid webhook signing secret is required" });
+  }
+  const trimmed = secret.trim();
+  if (!trimmed.startsWith("whsec_")) {
+    return res.status(400).json({ error: "Secret must start with whsec_ (Stripe webhook signing secret)" });
+  }
+  try {
+    await db
+      .insert(appSettingsTable)
+      .values({ key: "stripe_billing_webhook_secret", value: trimmed })
+      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date() } });
+    const preview = `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
+    res.json({ stored: true, preview });
+  } catch (err) {
+    logger.error({ err }, "Failed to save webhook secret");
+    res.status(500).json({ error: "Failed to save secret" });
+  }
+});
+
+router.delete("/admin/stripe/webhook-secret", async (_req, res) => {
+  try {
+    await db.delete(appSettingsTable).where(eq(appSettingsTable.key, "stripe_billing_webhook_secret"));
+    res.json({ stored: false });
+  } catch (err) {
+    logger.error({ err }, "Failed to delete webhook secret");
+    res.status(500).json({ error: "Failed to remove secret" });
+  }
+});
+
 async function queryStripe<T = Record<string, unknown>>(query: ReturnType<typeof sql>): Promise<T[]> {
   try {
     const result = await db.execute(query);

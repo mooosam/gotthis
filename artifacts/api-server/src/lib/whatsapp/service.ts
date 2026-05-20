@@ -108,7 +108,11 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
   // running the classifier or the ritual handler.
   const budgetCheck = checkBudgetForUser(user);
   if (!budgetCheck.allowed) {
-    await sendTracked(jid, budgetCheck.reason ?? "Daily message limit reached.");
+    const base = getBaseUrl();
+    const upgradeHint = budgetCheck.upgradePrompt
+      ? `\n\nUpgrade your plan at: ${base}/account`
+      : "";
+    await sendTracked(jid, (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint);
     return;
   }
 

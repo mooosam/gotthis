@@ -27,6 +27,10 @@ export default function DashboardPage() {
   const [aiReply, setAiReply]   = useState("");
   const [lastSentAt, setLastSentAt] = useState<Date | null>(null);
   const [goalsUpdated, setGoalsUpdated] = useState(0);
+  const [upgradePrompt, setUpgradePrompt] = useState<{
+    message: string;
+    checkoutPath: string;
+  } | null>(null);
   const loadedAt = useRef(new Date());
 
   const handleSend = useCallback(async () => {
@@ -36,12 +40,23 @@ export default function DashboardPage() {
       return;
     }
     setIsSending(true);
+    setUpgradePrompt(null);
     try {
       const response = await apiFetch("/api/ai/message", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ message: content }),
       });
+      if (response.status === 402) {
+        const body = await response.json().catch(() => null) as {
+          error?: string; message?: string; checkoutPath?: string;
+        } | null;
+        setUpgradePrompt({
+          message: body?.message ?? body?.error ?? "You've reached your plan limit.",
+          checkoutPath: body?.checkoutPath ?? "/account#billing",
+        });
+        return;
+      }
       if (!response.ok) {
         const error = await response.json().catch(() => null);
         throw new Error(error?.error || "Failed to send update");
@@ -247,6 +262,42 @@ export default function DashboardPage() {
               }}
             >
               {aiReply}
+            </div>
+          )}
+
+          {upgradePrompt && (
+            <div
+              style={{
+                marginTop:    12,
+                background:   "#FFFBEB",
+                borderRadius: 10,
+                border:       "1px solid #FCD34D",
+                padding:      "12px 16px",
+                display:      "flex",
+                alignItems:   "center",
+                justifyContent: "space-between",
+                gap:          12,
+              }}
+            >
+              <span style={{ fontSize: 13, color: "#92400E", lineHeight: 1.5 }}>
+                {upgradePrompt.message}
+              </span>
+              <Link
+                href={upgradePrompt.checkoutPath}
+                style={{
+                  flexShrink:    0,
+                  fontSize:      12,
+                  fontWeight:    600,
+                  color:         "#FFFFFF",
+                  background:    "#D97706",
+                  borderRadius:  8,
+                  padding:       "5px 14px",
+                  textDecoration: "none",
+                  whiteSpace:    "nowrap",
+                }}
+              >
+                Upgrade
+              </Link>
             </div>
           )}
         </div>

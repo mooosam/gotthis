@@ -131,7 +131,7 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${base}/account?checkout=success`,
+      success_url: `${base}/?checkout=success`,
       cancel_url: `${base}/account`,
       metadata: { userId },
       subscription_data: { metadata: { userId } },
