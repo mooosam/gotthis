@@ -10,6 +10,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/landing";
+import PricingPage from "@/pages/pricing";
+import FaqPage from "@/pages/faq";
+import ContactPage from "@/pages/contact";
+import TermsPage from "@/pages/terms";
+import CookiesPage from "@/pages/cookies";
+import DataPolicyPage from "@/pages/data-policy";
 import OnboardingPage from "@/pages/onboarding";
 import DashboardPage from "@/pages/dashboard";
 import GoalsPage from "@/pages/goals";
@@ -89,17 +96,10 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
-function HomeRedirect() {
-  return (
-    <>
-      <Show when="signed-in">
-        <Redirect to="/dashboard" />
-      </Show>
-      <Show when="signed-out">
-        <Redirect to="/sign-in" />
-      </Show>
-    </>
-  );
+function HomePage() {
+  const { isSignedIn, isLoaded } = useUser();
+  if (isLoaded && isSignedIn) return <Redirect to="/dashboard" />;
+  return <LandingPage />;
 }
 
 function ClerkProviderWithRoutes() {
@@ -116,25 +116,35 @@ function ClerkProviderWithRoutes() {
         <ClerkAuthSetup />
         <ClerkQueryClientCacheInvalidator />
         <Switch>
-          <Route path="/" component={HomeRedirect} />
+          {/* Public marketing pages */}
+          <Route path="/" component={HomePage} />
+          <Route path="/pricing" component={PricingPage} />
+          <Route path="/faq" component={FaqPage} />
+          <Route path="/contact" component={ContactPage} />
+          <Route path="/terms" component={TermsPage} />
+          <Route path="/cookies" component={CookiesPage} />
+          <Route path="/data-policy" component={DataPolicyPage} />
+
+          {/* Auth */}
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />
-          
+
+          {/* App (authenticated) */}
           <Route path="/onboarding">
             <Show when="signed-in"><OnboardingPage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
           </Route>
-          
+
           <Route path="/dashboard">
             <Show when="signed-in"><DashboardPage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
           </Route>
-          
+
           <Route path="/goals">
             <Show when="signed-in"><GoalsPage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
           </Route>
-          
+
           <Route path="/goal/:goalId">
             {(params) => (
               <>
@@ -143,7 +153,7 @@ function ClerkProviderWithRoutes() {
               </>
             )}
           </Route>
-          
+
           <Route path="/review/:date">
             {(params) => (
               <>
@@ -152,7 +162,7 @@ function ClerkProviderWithRoutes() {
               </>
             )}
           </Route>
-          
+
           <Route path="/account">
             <Show when="signed-in"><AccountPage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
