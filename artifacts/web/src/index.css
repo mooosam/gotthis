@@ -199,6 +199,11 @@
   }
 
   .font-serif {
+    font-family: "Work Sans", system-ui, sans-serif !important;
+    letter-spacing: 0.02em;
+  }
+
+  .font-display {
     font-family: "Instrument Serif", Georgia, serif !important;
     letter-spacing: 0.01em;
   }
