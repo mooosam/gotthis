@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { User, Mail, Globe, Crown, MessageSquare, Zap, Clock, Save } from "lucide-react";
+import { User, Mail, Globe, Crown, MessageSquare, Zap, Clock, Save, CheckCircle2, ArrowRight, ExternalLink } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -10,7 +10,8 @@ import {
   useUpdateMyProfile,
   getGetMyProfileQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
 
 import { AppLayout } from "@/components/layout/app-layout";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,184 @@ const settingsSchema = z.object({
 });
 
 type SettingsValues = z.infer<typeof settingsSchema>;
+
+// ── Billing Section ─────────────────────────────────────────────────────────
+
+const PLAN_FEATURES: Record<string, { label: string; features: string[]; price: string | null }> = {
+  free:  { label: "Free",  price: null,      features: ["5 messages/day", "3 goals", "50K tokens/mo", "WhatsApp only"] },
+  pro:   { label: "Pro",   price: "$12/mo",  features: ["50 messages/day", "10 goals", "500K tokens/mo", "WhatsApp + email", "Annual plan $99/yr"] },
+  elite: { label: "Elite", price: "$29/mo",  features: ["200 messages/day", "Unlimited goals", "2M tokens/mo", "All channels", "Proactive nudges"] },
+};
+
+function BillingSection({ tier }: { tier: string }) {
+  const { toast } = useToast();
+  const [proAnnual, setProAnnual] = useState(false);
+
+  const checkoutMutation = useMutation({
+    mutationFn: async ({ upgradeTier, period }: { upgradeTier: string; period: string }) => {
+      const r = await apiFetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier: upgradeTier, period }),
+      });
+      if (!r.ok) {
+        const e = await r.json();
+        throw new Error(e.error ?? "Failed to start checkout");
+      }
+      return r.json() as Promise<{ url: string }>;
+    },
+    onSuccess: ({ url }) => { if (url) window.location.href = url; },
+    onError: (err: Error) => toast({ title: "Checkout failed", description: err.message, variant: "destructive" }),
+  });
+
+  const portalMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiFetch("/api/billing/portal");
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Failed"); }
+      return r.json() as Promise<{ url: string }>;
+    },
+    onSuccess: ({ url }) => { window.open(url, "_blank"); },
+    onError: (err: Error) => toast({ title: "Portal error", description: err.message, variant: "destructive" }),
+  });
+
+  const current = PLAN_FEATURES[tier] ?? PLAN_FEATURES.free;
+
+  return (
+    <div className="space-y-4">
+      {/* Current plan feature list */}
+      <Card className="border-border/40 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="font-serif text-base flex items-center justify-between">
+            <span>{current.label} plan features</span>
+            {current.price && (
+              <span className="text-sm font-normal text-muted-foreground">{current.price}</span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {current.features.map((f) => (
+            <div key={f} className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+              <span>{f}</span>
+            </div>
+          ))}
+          {(tier === "pro" || tier === "elite") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-3 h-8 text-xs text-muted-foreground gap-1.5 px-0"
+              onClick={() => portalMutation.mutate()}
+              disabled={portalMutation.isPending}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              {portalMutation.isPending ? "Opening…" : "Manage billing & invoices"}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Upgrade cards for Free / Pro users */}
+      {tier === "free" && (
+        <div className="space-y-3">
+          {/* Pro card */}
+          <Card className="border-primary/30 shadow-sm">
+            <CardContent className="p-5 space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-serif font-semibold">Pro</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-lg font-bold">{proAnnual ? "$99" : "$12"}</span>
+                    <span className="text-xs text-muted-foreground">{proAnnual ? "/year" : "/month"}</span>
+                    {proAnnual && <span className="text-xs text-green-600 font-medium">Save $45</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setProAnnual(false)}
+                    className={`px-2 py-1 rounded ${!proAnnual ? "bg-primary text-primary-foreground" : "hover:bg-muted"} transition-colors`}
+                  >Monthly</button>
+                  <button
+                    type="button"
+                    onClick={() => setProAnnual(true)}
+                    className={`px-2 py-1 rounded ${proAnnual ? "bg-primary text-primary-foreground" : "hover:bg-muted"} transition-colors`}
+                  >Annual</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {PLAN_FEATURES.pro.features.map((f) => (
+                  <div key={f} className="flex items-center gap-1.5 text-xs">
+                    <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+                    <span className="text-muted-foreground">{f}</span>
+                  </div>
+                ))}
+              </div>
+              <Button
+                className="w-full gap-2"
+                size="sm"
+                onClick={() => checkoutMutation.mutate({ upgradeTier: "pro", period: proAnnual ? "yearly" : "monthly" })}
+                disabled={checkoutMutation.isPending}
+              >
+                Upgrade to Pro <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Elite card */}
+          <Card className="border-border/40 shadow-sm bg-muted/10">
+            <CardContent className="p-5 space-y-3">
+              <div>
+                <p className="font-serif font-semibold">Elite</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-lg font-bold">$29</span>
+                  <span className="text-xs text-muted-foreground">/month</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {PLAN_FEATURES.elite.features.map((f) => (
+                  <div key={f} className="flex items-center gap-1.5 text-xs">
+                    <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+                    <span className="text-muted-foreground">{f}</span>
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                size="sm"
+                onClick={() => checkoutMutation.mutate({ upgradeTier: "elite", period: "monthly" })}
+                disabled={checkoutMutation.isPending}
+              >
+                Upgrade to Elite <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Pro user: upgrade to Elite */}
+      {tier === "pro" && (
+        <Card className="border-border/40 shadow-sm bg-muted/10">
+          <CardContent className="p-5 space-y-3">
+            <div>
+              <p className="font-serif font-semibold">Upgrade to Elite</p>
+              <p className="text-xs text-muted-foreground mt-0.5">$29/month — Unlimited goals, proactive nudges, all channels</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-2"
+              onClick={() => checkoutMutation.mutate({ upgradeTier: "elite", period: "monthly" })}
+              disabled={checkoutMutation.isPending}
+            >
+              Upgrade to Elite <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 export default function AccountPage() {
   const [isEditing, setIsEditing] = useState(false);
@@ -438,22 +617,7 @@ export default function AccountPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 shadow-sm bg-muted/20">
-              <CardContent className="p-6 space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Free plan</span>
-                  <span className="font-medium">5 msg/day · 50K tokens/mo</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Pro — $12/mo</span>
-                  <span className="font-medium">50 msg/day · 500K tokens/mo</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Elite — $29/mo</span>
-                  <span className="font-medium">Unlimited · 2M tokens/mo</span>
-                </div>
-              </CardContent>
-            </Card>
+            <BillingSection tier={profile.tier} />
           </div>
         </div>
       </div>

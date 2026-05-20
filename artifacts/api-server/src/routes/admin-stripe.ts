@@ -1,12 +1,63 @@
 import { Router } from "express";
-import { sql } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { sql, eq } from "drizzle-orm";
+import { db, appSettingsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
+
+// ── API key management ──────────────────────────────────────────────────────
+
+router.get("/admin/stripe/key", async (_req, res) => {
+  try {
+    const [row] = await db
+      .select()
+      .from(appSettingsTable)
+      .where(eq(appSettingsTable.key, "stripe_secret_key"))
+      .limit(1);
+    if (!row) return res.json({ stored: false, preview: null });
+    const key = row.value;
+    const preview = key.startsWith("sk_") ? `${key.slice(0, 7)}…${key.slice(-4)}` : `${key.slice(0, 4)}…${key.slice(-4)}`;
+    res.json({ stored: true, preview, updatedAt: row.updatedAt });
+  } catch (err) {
+    logger.error({ err }, "Failed to get stripe key");
+    res.status(500).json({ error: "Failed to retrieve key" });
+  }
+});
+
+router.post("/admin/stripe/key", async (req, res) => {
+  const { key } = req.body as { key?: string };
+  if (!key || typeof key !== "string" || key.trim().length < 10) {
+    return res.status(400).json({ error: "A valid Stripe secret key is required" });
+  }
+  const trimmed = key.trim();
+  if (!trimmed.startsWith("sk_")) {
+    return res.status(400).json({ error: "Key must start with sk_ (Stripe secret key)" });
+  }
+  try {
+    await db
+      .insert(appSettingsTable)
+      .values({ key: "stripe_secret_key", value: trimmed })
+      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date() } });
+    const preview = `${trimmed.slice(0, 7)}…${trimmed.slice(-4)}`;
+    res.json({ stored: true, preview });
+  } catch (err) {
+    logger.error({ err }, "Failed to save stripe key");
+    res.status(500).json({ error: "Failed to save key" });
+  }
+});
+
+router.delete("/admin/stripe/key", async (_req, res) => {
+  try {
+    await db.delete(appSettingsTable).where(eq(appSettingsTable.key, "stripe_secret_key"));
+    res.json({ stored: false });
+  } catch (err) {
+    logger.error({ err }, "Failed to delete stripe key");
+    res.status(500).json({ error: "Failed to remove key" });
+  }
+});
 
 async function queryStripe<T = Record<string, unknown>>(query: ReturnType<typeof sql>): Promise<T[]> {
   try {

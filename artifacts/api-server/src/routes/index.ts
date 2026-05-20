@@ -16,6 +16,7 @@ import shareRouter from "./share";
 import skipCreditsRouter from "./skip-credits";
 import adminRouter from "./admin";
 import adminStripeRouter from "./admin-stripe";
+import billingRouter from "./billing";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(shareRouter);
 router.use(skipCreditsRouter);
 router.use(adminRouter);
 router.use(adminStripeRouter);
+router.use(billingRouter);
 
 export default router;

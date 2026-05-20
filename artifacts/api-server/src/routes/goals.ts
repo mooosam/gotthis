@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, goalsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { requireGoalSlot } from "../middlewares/requireTier";
 import { nanoid } from "nanoid";
 import {
   CreateGoalBody,
@@ -65,7 +66,7 @@ router.get("/goals", requireAuth, async (req, res): Promise<void> => {
   res.json(goals);
 });
 
-router.post("/goals", requireAuth, async (req, res): Promise<void> => {
+router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
 
   const parsed = CreateGoalBody.safeParse(req.body);

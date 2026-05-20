@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CreditCard, Users, RefreshCcw, ArrowLeft,
   TrendingUp, CheckCircle2, XCircle, Clock,
-  ChevronLeft, ChevronRight, Search,
+  ChevronLeft, ChevronRight, Search, Key, Eye, EyeOff, Trash2, Sparkles,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/app-layout";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -72,6 +73,169 @@ function useStripeStatus() {
     },
     staleTime: 30_000,
   });
+}
+
+function useStoredKey() {
+  return useQuery({
+    queryKey: ["stripe-stored-key"],
+    queryFn: async () => {
+      const r = await apiFetch("/api/admin/stripe/key");
+      return r.json() as Promise<{ stored: boolean; preview: string | null; updatedAt?: string }>;
+    },
+  });
+}
+
+// ── API Key Panel ───────────────────────────────────────────────────────────
+
+function ApiKeyPanel() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { data: keyData, isLoading: keyLoading } = useStoredKey();
+  const [inputKey, setInputKey] = useState("");
+  const [show, setShow] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const r = await apiFetch("/api/admin/stripe/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      if (!r.ok) {
+        const e = await r.json();
+        throw new Error(e.error ?? "Failed to save");
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      setInputKey("");
+      qc.invalidateQueries({ queryKey: ["stripe-stored-key"] });
+      qc.invalidateQueries({ queryKey: ["stripe-status"] });
+      toast({ title: "API key saved", description: "The server will use this key immediately." });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiFetch("/api/admin/stripe/key", { method: "DELETE" });
+      if (!r.ok) throw new Error("Failed to remove");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stripe-stored-key"] });
+      qc.invalidateQueries({ queryKey: ["stripe-status"] });
+      toast({ title: "API key removed" });
+    },
+    onError: () => toast({ title: "Error removing key", variant: "destructive" }),
+  });
+
+  const seedMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiFetch("/api/admin/stripe/seed-products", { method: "POST" });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Failed"); }
+      return r.json();
+    },
+    onSuccess: () => toast({ title: "Products created", description: "Free, Pro & Elite products and prices are ready on Stripe." }),
+    onError: (err: Error) => toast({ title: "Seed failed", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card className="border-border/40 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="font-serif flex items-center gap-2 text-base">
+          <Key className="h-4 w-4 text-muted-foreground" />
+          Stripe API Key
+        </CardTitle>
+        <CardDescription>
+          Enter your Stripe secret key directly — takes priority over the Integrations connector.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {keyLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : keyData?.stored ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/30 px-4 py-2.5">
+            <div>
+              <p className="text-sm font-medium font-mono">{keyData.preview}</p>
+              {keyData.updatedAt && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Saved {new Date(keyData.updatedAt).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive h-8"
+              onClick={() => removeMutation.mutate()}
+              disabled={removeMutation.isPending}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              Remove
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                ref={inputRef}
+                type={show ? "text" : "password"}
+                placeholder="sk_live_… or sk_test_…"
+                value={inputKey}
+                onChange={(e) => setInputKey(e.target.value)}
+                className="pr-10 font-mono text-sm"
+                onKeyDown={(e) => { if (e.key === "Enter" && inputKey.trim()) saveMutation.mutate(inputKey.trim()); }}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShow((s) => !s)}
+              >
+                {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <Button
+              onClick={() => saveMutation.mutate(inputKey.trim())}
+              disabled={!inputKey.trim().startsWith("sk_") || saveMutation.isPending}
+              size="sm"
+            >
+              Save
+            </Button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-muted-foreground">
+            Find your key at{" "}
+            <a
+              href="https://dashboard.stripe.com/apikeys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              dashboard.stripe.com/apikeys
+            </a>
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5"
+            onClick={() => seedMutation.mutate()}
+            disabled={seedMutation.isPending || (!keyData?.stored)}
+          >
+            <Sparkles className="h-3 w-3" />
+            {seedMutation.isPending ? "Creating…" : "Setup Products"}
+          </Button>
+        </div>
+        {seedMutation.isSuccess && (
+          <p className="text-xs text-green-600 dark:text-green-400">
+            Products created. Users can now subscribe to Free, Pro & Elite plans.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function useOverview() {
@@ -445,13 +609,16 @@ export default function AdminStripePage() {
           </div>
         </div>
 
+        {/* API Key Panel — always visible */}
+        <ApiKeyPanel />
+
         {/* Not-connected banner */}
         {!connected && (
           <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/40 shadow-none">
             <CardContent className="pt-5 pb-5">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Stripe not connected</p>
               <p className="text-sm text-amber-700/80 dark:text-amber-400/80 mt-0.5">
-                Open the Integrations tab in your Replit workspace and connect your Stripe account.
+                Enter your Stripe secret key above, or open the Integrations tab and connect your Stripe account.
                 Once connected, restart the API server and data will sync automatically.
               </p>
             </CardContent>
