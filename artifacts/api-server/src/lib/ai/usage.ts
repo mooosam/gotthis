@@ -28,6 +28,13 @@ export function getCacheHitTokens(usage: object): number {
 export interface UsageBudgetCheck {
   allowed: boolean;
   reason?: string;
+  /** Structured upgrade prompt payload — set when limit is due to tier, not just daily reset */
+  upgradePrompt?: {
+    code: "TIER_GATE";
+    gate: "daily_cap" | "monthly_tokens";
+    upgradeRequired: "pro" | "elite";
+    message: string;
+  };
   dailyRemaining: number;
   monthlyTokenRemaining: number;
 }
@@ -81,17 +88,18 @@ export function checkBudgetForUser(user: User): UsageBudgetCheck {
 
   if (dailyRemaining === 0) {
     logger.info(
-      {
-        userId: user.id,
-        event: "daily_cap_reached",
-        cap: user.dailyMessageCap,
-        timezone: tz,
-      },
+      { userId: user.id, event: "daily_cap_reached", cap: user.dailyMessageCap, timezone: tz },
       "Daily message cap reached",
     );
+    const isFree = user.tier === "free" || !user.tier;
     return {
       allowed: false,
-      reason: `Daily message limit of ${user.dailyMessageCap} reached. Your limit resets at midnight.`,
+      reason: isFree
+        ? `You've used all ${user.dailyMessageCap} messages for today (Free plan). Upgrade to Pro for 50 messages/day — or your limit resets at midnight.`
+        : `Daily message limit of ${user.dailyMessageCap} reached. Your limit resets at midnight.`,
+      upgradePrompt: isFree
+        ? { code: "TIER_GATE", gate: "daily_cap", upgradeRequired: "pro", message: `Upgrade to Pro for 50 messages/day — $12/mo or $99/yr` }
+        : undefined,
       dailyRemaining: 0,
       monthlyTokenRemaining,
     };
@@ -99,16 +107,24 @@ export function checkBudgetForUser(user: User): UsageBudgetCheck {
 
   if (monthlyTokenRemaining <= 0) {
     logger.info(
-      {
-        userId: user.id,
-        event: "monthly_token_exhausted",
-        allowance: user.monthlyTokenAllowance,
-      },
+      { userId: user.id, event: "monthly_token_exhausted", allowance: user.monthlyTokenAllowance },
       "Monthly token allowance exhausted",
     );
+    const isFree = user.tier === "free" || !user.tier;
+    const isPro = user.tier === "pro";
     return {
       allowed: false,
-      reason: `Monthly token allowance exhausted. Upgrade your plan to continue.`,
+      reason: isFree
+        ? `Monthly token allowance exhausted. Upgrade to Pro ($12/mo) for 10× more tokens.`
+        : isPro
+          ? `Monthly token allowance exhausted. Upgrade to Elite ($29/mo) for unlimited tokens.`
+          : `Monthly token allowance exhausted.`,
+      upgradePrompt:
+        isFree
+          ? { code: "TIER_GATE", gate: "monthly_tokens", upgradeRequired: "pro", message: `Upgrade to Pro for 500K tokens/month — $12/mo` }
+          : isPro
+            ? { code: "TIER_GATE", gate: "monthly_tokens", upgradeRequired: "elite", message: `Upgrade to Elite for 2M tokens/month — $29/mo` }
+            : undefined,
       dailyRemaining,
       monthlyTokenRemaining,
     };

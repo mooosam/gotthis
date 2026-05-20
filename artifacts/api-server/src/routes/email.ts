@@ -3,6 +3,7 @@ import { db, usersTable, emailMessagesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { processMessage } from "../lib/ai/processor.js";
 import { sendReply } from "../lib/email/service.js";
+import { getTierConfig } from "../lib/tierConfig.js";
 import { logger } from "../lib/logger.js";
 
 interface PostmarkHeader {
@@ -112,9 +113,31 @@ router.post("/email/inbound", async (req, res): Promise<void> => {
       userId: "unmatched",
       toEmail: FromEmail,
       subject: Subject,
-      body: "We could not find an account linked to this email address. Please sign up at theritual.ai to get started.",
+      body: "We could not find an account linked to this email address. Please sign up at paceify.app to get started.",
       inReplyTo: fallbackMessageId,
       references: fallbackMessageId,
+    });
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  // ── Tier gate: email channel requires Pro or Elite ────────────────────────
+  const [userRecord] = await db
+    .select({ tier: usersTable.tier })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  const tierCfg = getTierConfig(userRecord?.tier ?? "free");
+  if (!tierCfg.emailChannel) {
+    const gateMessageId = MessageID ?? `gate-${Date.now()}`;
+    await sendReply({
+      userId,
+      toEmail: FromEmail,
+      subject: `Re: ${Subject}`,
+      body: "Email coaching is available on Paceify Pro and Elite plans.\n\nUpgrade at https://paceify.app/account to unlock email coaching, along with 50 messages/day and 10 goals.\n\nYou can still track your goals via WhatsApp.",
+      inReplyTo: gateMessageId,
+      references: gateMessageId,
     });
     res.status(200).json({ ok: true });
     return;

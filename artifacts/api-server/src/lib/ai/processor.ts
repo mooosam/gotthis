@@ -11,6 +11,12 @@ export interface ProcessMessageResult {
   intent: string;
   dailyRemaining: number;
   monthlyTokenRemaining: number;
+  upgradePrompt?: {
+    code: "TIER_GATE";
+    gate: "daily_cap" | "monthly_tokens";
+    upgradeRequired: "pro" | "elite";
+    message: string;
+  };
 }
 
 // Hard cap on the user-supplied message length passed to Claude. Both the
@@ -63,6 +69,7 @@ export async function processMessage(
       intent: "budget_exceeded",
       dailyRemaining: initialBudget.dailyRemaining,
       monthlyTokenRemaining: initialBudget.monthlyTokenRemaining,
+      upgradePrompt: initialBudget.upgradePrompt,
     };
   }
 
@@ -99,6 +106,7 @@ export async function processMessage(
         intent: "budget_exceeded",
         dailyRemaining: provisionalBudget.dailyRemaining,
         monthlyTokenRemaining: provisionalBudget.monthlyTokenRemaining,
+        upgradePrompt: provisionalBudget.upgradePrompt,
       };
     }
   }

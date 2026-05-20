@@ -31,7 +31,20 @@ router.post("/ai/message", requireAuth, async (req, res): Promise<void> => {
     return;
   }
   if (result.intent === "budget_exceeded") {
-    res.status(429).json({ error: result.reply });
+    // Return 402 with a structured upgrade prompt so the dashboard can render
+    // an inline upgrade CTA instead of a generic error toast.
+    res.status(402).json({
+      error: result.reply,
+      ...(result.upgradePrompt
+        ? {
+            code: result.upgradePrompt.code,
+            gate: result.upgradePrompt.gate,
+            upgradeRequired: result.upgradePrompt.upgradeRequired,
+            message: result.upgradePrompt.message,
+            checkoutPath: "/account#billing",
+          }
+        : {}),
+    });
     return;
   }
 

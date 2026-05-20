@@ -190,14 +190,15 @@ export async function handleBillingWebhook(
   const prices = await getPriceSettings();
   const webhookSecret = prices.stripe_billing_webhook_secret;
 
-  let event: Stripe.Event;
-  if (webhookSecret) {
-    const stripe = await getUncachableStripeClient();
-    event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
-  } else {
-    logger.warn("stripe_billing_webhook_secret not set — skipping signature verification");
-    event = JSON.parse(payload.toString()) as Stripe.Event;
+  if (!webhookSecret) {
+    throw new Error(
+      "stripe_billing_webhook_secret is not configured. " +
+      "Set it in Admin → Stripe settings to enable billing webhooks."
+    );
   }
+
+  const stripe = await getUncachableStripeClient();
+  const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
 
   switch (event.type) {
     case "checkout.session.completed": {
@@ -332,7 +333,8 @@ router.post("/admin/stripe/seed-products", requireAuth, requireAdmin, async (_re
       });
     }
 
-    const [proProduct, eliteProduct] = await Promise.all([
+    const [freeProduct, proProduct, eliteProduct] = await Promise.all([
+      findOrCreateProduct("Paceify Free"),
       findOrCreateProduct("Paceify Pro"),
       findOrCreateProduct("Paceify Elite"),
     ]);
@@ -358,6 +360,7 @@ router.post("/admin/stripe/seed-products", requireAuth, requireAdmin, async (_re
     res.json({
       success: true,
       products: {
+        free: freeProduct.id,
         pro: proProduct.id,
         elite: eliteProduct.id,
       },

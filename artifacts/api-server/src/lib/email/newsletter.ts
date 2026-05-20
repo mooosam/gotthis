@@ -7,6 +7,7 @@ import {
   dailyLogsTable,
 } from "@workspace/db";
 import { eq, and, gte } from "drizzle-orm";
+import { getTierConfig } from "../tierConfig.js";
 import { logger } from "../logger.js";
 import { sendNewsletter } from "./service.js";
 
@@ -186,6 +187,7 @@ export function startNewsletterCron(): void {
       const users = await db
         .select({
           id: usersTable.id,
+          tier: usersTable.tier,
           email: usersTable.email,
           timezone: usersTable.timezone,
           newsletterCadence: usersTable.newsletterCadence,
@@ -197,6 +199,14 @@ export function startNewsletterCron(): void {
 
       for (const user of users) {
         if (!isSendTimeForCadence(user.newsletterCadence, user.timezone)) continue;
+
+        // Email newsletters are a proactive nudge — require Pro or Elite.
+        const tierCfg = getTierConfig(user.tier);
+        if (!tierCfg.emailChannel) {
+          logger.debug({ userId: user.id, tier: user.tier }, "Skipping newsletter — tier does not include email channel");
+          continue;
+        }
+
         await sendNewsletterForUser(user);
       }
     } catch (err) {

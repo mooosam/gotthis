@@ -21,6 +21,7 @@ export function requireEmailChannel() {
         gate: "email_channel",
         upgradeRequired: "pro",
         message: "Upgrade to Pro to access email coaching — $12/mo or $99/yr",
+        checkoutPath: "/account#billing",
       });
       return;
     }
@@ -44,6 +45,7 @@ export function requireProactiveNudges() {
         gate: "proactive_nudges",
         upgradeRequired: "elite",
         message: "Upgrade to Elite to unlock proactive nudges — $29/mo",
+        checkoutPath: "/account#billing",
       });
       return;
     }
@@ -79,6 +81,7 @@ export function requireGoalSlot() {
           user.tier === "free"
             ? `Free plan allows ${cfg.goalCountLimit} goals. Upgrade to Pro for up to 10 — $12/mo`
             : `Pro plan allows ${cfg.goalCountLimit} goals. Upgrade to Elite for unlimited goals — $29/mo`,
+        checkoutPath: "/account#billing",
       });
       return;
     }

@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { db, usersTable, goalsTable, dailyLogsTable } from "@workspace/db";
 import { eq, and, gte, ne, isNotNull } from "drizzle-orm";
+import { getTierConfig } from "../tierConfig.js";
 import { logger } from "../logger.js";
 
 interface GoalUpdate {
@@ -108,6 +109,7 @@ export function startWeeklyChartCron(
       const users = await db
         .select({
           id: usersTable.id,
+          tier: usersTable.tier,
           timezone: usersTable.timezone,
           whatsappJid: usersTable.whatsappJid,
           lastWeeklyChartSentAt: usersTable.lastWeeklyChartSentAt,
@@ -117,6 +119,13 @@ export function startWeeklyChartCron(
 
       for (const user of users) {
         if (!user.whatsappJid || !isSundayMorningInTimezone(user.timezone)) continue;
+
+        // Proactive nudges are an Elite-only feature.
+        const tierCfg = getTierConfig(user.tier);
+        if (!tierCfg.proactiveNudges) {
+          logger.debug({ userId: user.id, tier: user.tier }, "Skipping weekly chart — tier does not include proactive nudges");
+          continue;
+        }
 
         const todayLocal = localDateInTimezone(user.timezone);
         const alreadySentToday =
