@@ -8,6 +8,12 @@ import { seedDefaultPlans } from "./lib/seed-plans.js";
 import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./stripeClient";
 
+// Catch unhandled promise rejections (e.g. from Baileys reconnect timers) so
+// they are logged rather than crashing the process in Node 15+.
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection — keeping process alive");
+});
+
 async function initStripe() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return;

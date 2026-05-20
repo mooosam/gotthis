@@ -221,14 +221,14 @@ async function connect(phoneForPairing?: string): Promise<void> {
 
       if (shouldReconnect) {
         reconnectTimer = setTimeout(() => {
-          void connect();
+          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect failed"));
         }, 5000);
       } else {
         logger.info("WhatsApp logged out — clearing auth state");
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         // Reconnect with fresh state so a new QR / pairing code is generated
         reconnectTimer = setTimeout(() => {
-          void connect();
+          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect (fresh) failed"));
         }, 3000);
       }
     }
@@ -375,10 +375,14 @@ export async function requestPairingCode(phone: string): Promise<string> {
       const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       const shouldReconnect = reason !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
-        reconnectTimer = setTimeout(() => { void connect(); }, 5000);
+        reconnectTimer = setTimeout(() => {
+          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect failed"));
+        }, 5000);
       } else {
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        reconnectTimer = setTimeout(() => { void connect(); }, 3000);
+        reconnectTimer = setTimeout(() => {
+          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect (fresh) failed"));
+        }, 3000);
       }
     }
 
