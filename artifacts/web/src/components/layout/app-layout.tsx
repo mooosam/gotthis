@@ -1,22 +1,10 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useGetMyProfile } from "@workspace/api-client-react";
+import { useGetMyProfile, useListGoals } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
-import { 
-  LogOut, 
-  Settings, 
-  LayoutDashboard, 
-  Target, 
-  CalendarDays, 
-  Menu,
-  Moon,
-  Sun,
-  Smartphone,
-  Shield
-} from "lucide-react";
+import { LogOut, Settings, Menu, Moon, Sun, Shield } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +17,29 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button";
+
+const CATEGORY_COLORS: Record<string, string> = {
+  fitness:      "#22C55E",
+  health:       "#22C55E",
+  wellness:     "#22C55E",
+  writing:      "#3B82F6",
+  work:         "#3B82F6",
+  career:       "#3B82F6",
+  productivity: "#3B82F6",
+  reading:      "#EAB308",
+  learning:     "#EAB308",
+  education:    "#EAB308",
+  finance:      "#F97316",
+  money:        "#F97316",
+  mindfulness:  "#A855F7",
+  meditation:   "#A855F7",
+  social:       "#EC4899",
+};
+
+function getCategoryColor(category: string): string {
+  return CATEGORY_COLORS[category.toLowerCase()] ?? "#94A3B8";
+}
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -36,8 +47,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isAdminPage = location.startsWith("/admin");
 
   useEffect(() => {
-    // Don't bounce admins out of the admin section if they happen to not have
-    // onboarding finished yet — they're not really "users" of the product flow.
     if (!isLoading && profile && !profile.onboardingCompleted && !isAdminPage) {
       setLocation("/onboarding");
     }
@@ -45,7 +54,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
         <div className="flex flex-col items-center gap-4">
           <Skeleton className="h-12 w-12 rounded-full" />
           <Skeleton className="h-4 w-32" />
@@ -55,12 +64,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      <Sidebar className="hidden md:flex w-64 flex-col border-r bg-sidebar" isAdmin={profile?.isAdmin === true} />
+    <div className="min-h-screen flex flex-col md:flex-row bg-[#FAFAFA] dark:bg-background">
+      <Sidebar
+        className="hidden md:flex w-52 flex-col border-r border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar"
+        isAdmin={profile?.isAdmin === true}
+        whatsappConnected={!!profile?.whatsappNumber}
+      />
       <div className="flex-1 flex flex-col min-w-0">
         <MobileNav isAdmin={profile?.isAdmin === true} />
-        <main className="flex-1 overflow-auto p-4 md:p-8">
-          <div className="max-w-6xl mx-auto">
+        <main className="flex-1 overflow-auto p-6 md:p-10">
+          <div className="max-w-5xl mx-auto">
             {children}
           </div>
         </main>
@@ -69,23 +82,42 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Sidebar({ className, isAdmin }: { className?: string; isAdmin: boolean }) {
+function Sidebar({
+  className,
+  isAdmin,
+  whatsappConnected,
+}: {
+  className?: string;
+  isAdmin: boolean;
+  whatsappConnected: boolean;
+}) {
   const [location] = useLocation();
+  const { data: goalsData } = useListGoals();
 
   const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/goals", label: "Goals", icon: Target },
-    { href: `/review/${new Date().toISOString().split('T')[0]}`, label: "Today's Review", icon: CalendarDays },
-    { href: "/whatsapp", label: "WhatsApp", icon: Smartphone },
-    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
+    { href: "/dashboard",                                              label: "Dashboard" },
+    { href: "/goals",                                                  label: "Goals"     },
+    { href: `/review/${new Date().toISOString().split("T")[0]}`,       label: "Review"    },
+    { href: "/whatsapp",                                               label: "WhatsApp"  },
+    { href: "/account",                                                label: "Settings"  },
+    ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 
+  const categories = Array.from(
+    new Map(
+      (goalsData?.goals ?? [])
+        .filter((g) => g.status === "active" && g.category)
+        .map((g) => [g.category.toLowerCase(), g.category])
+    ).values()
+  ).slice(0, 6);
+
   return (
-    <div className={className}>
-      <div className="p-6">
-        <h2 className="text-2xl font-serif font-bold tracking-tight text-sidebar-foreground">Paceify</h2>
+    <div className={className} style={{ userSelect: "none" }}>
+      <div className="px-5 pt-7 pb-3">
+        <ProfileButton whatsappConnected={whatsappConnected} />
       </div>
-      <nav className="flex-1 px-4 space-y-2">
+
+      <nav className="flex-1 px-3 mt-3 overflow-y-auto">
         {navItems.map((item) => {
           const isActive =
             location === item.href ||
@@ -93,29 +125,176 @@ function Sidebar({ className, isAdmin }: { className?: string; isAdmin: boolean 
             (item.href === "/admin" && location.startsWith("/admin"));
           return (
             <Link key={item.href} href={item.href}>
-              <Button
-                variant={isActive ? "secondary" : "ghost"}
-                className={`w-full justify-start gap-3 ${isActive ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium" : "text-sidebar-foreground/70 hover:text-sidebar-foreground"}`}
-                data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+              <div
+                data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                className="flex items-center gap-2.5 px-2.5 py-[6px] rounded-lg mb-[2px] cursor-pointer transition-colors"
+                style={{
+                  fontWeight:  isActive ? 600 : 400,
+                  fontSize:    14,
+                  color:       isActive ? "var(--sidebar-active-text, #111827)" : "#6B7280",
+                  background:  isActive ? "#F3F4F6"                             : "transparent",
+                }}
               >
-                <item.icon className="h-4 w-4" />
+                <span
+                  style={{
+                    width:        6,
+                    height:       6,
+                    borderRadius: 1.5,
+                    background:   isActive ? "#111827" : "#D1D5DB",
+                    flexShrink:   0,
+                    display:      "inline-block",
+                  }}
+                />
                 {item.label}
-              </Button>
+              </div>
             </Link>
           );
         })}
+
+        {categories.length > 0 && (
+          <div style={{ marginTop: 24, marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize:      10,
+                fontWeight:    700,
+                letterSpacing: "0.1em",
+                color:         "#9CA3AF",
+                padding:       "0 10px",
+                marginBottom:  8,
+                textTransform: "uppercase",
+              }}
+            >
+              Goals
+            </div>
+            {categories.map((cat) => (
+              <Link key={cat} href="/goals">
+                <div
+                  className="flex items-center gap-2.5 px-2.5 py-[5px] rounded-lg mb-[2px] cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-sidebar-accent"
+                  style={{ fontSize: 13, color: "#6B7280" }}
+                >
+                  <span
+                    style={{
+                      width:        7,
+                      height:       7,
+                      borderRadius: "50%",
+                      background:   getCategoryColor(cat),
+                      flexShrink:   0,
+                      display:      "inline-block",
+                    }}
+                  />
+                  <span style={{ textTransform: "capitalize" }}>{cat}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </nav>
-      <div className="p-4 mt-auto">
-        <UserMenu />
-      </div>
     </div>
+  );
+}
+
+function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const [, setLocation] = useLocation();
+  const { theme, setTheme } = useTheme();
+
+  if (!user) {
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-8 rounded-full" />
+        <Skeleton className="h-3 w-24" />
+      </div>
+    );
+  }
+
+  const initials = user.fullName
+    ? user.fullName.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()
+    : user.primaryEmailAddress?.emailAddress?.substring(0, 2).toUpperCase() ?? "U";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          data-testid="user-menu-trigger"
+          className="w-full text-left focus:outline-none group"
+        >
+          <div className="flex items-center gap-2.5">
+            <Avatar className="h-8 w-8 rounded-full flex-shrink-0">
+              <AvatarImage src={user.imageUrl} />
+              <AvatarFallback className="rounded-full bg-[#1C1C1E] text-white text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <span
+              className="font-semibold truncate"
+              style={{ fontSize: 14, color: "#111827", maxWidth: 120 }}
+            >
+              {user.fullName || user.primaryEmailAddress?.emailAddress?.split("@")[0] || "User"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 mt-1.5 pl-[42px]">
+            <span
+              style={{
+                width:        7,
+                height:       7,
+                borderRadius: "50%",
+                background:   whatsappConnected ? "#22C55E" : "#D1D5DB",
+                display:      "inline-block",
+                flexShrink:   0,
+              }}
+            />
+            <span
+              style={{
+                fontSize:   12,
+                fontWeight: 500,
+                color:      whatsappConnected ? "#16A34A" : "#9CA3AF",
+              }}
+            >
+              {whatsappConnected ? "Connected" : "Not connected"}
+            </span>
+          </div>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="bottom" className="w-52" data-testid="user-menu-content">
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+          {user.primaryEmailAddress?.emailAddress}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => setLocation("/account")}
+          className="cursor-pointer"
+          data-testid="user-menu-account"
+        >
+          <Settings className="mr-2 h-4 w-4" />
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          className="cursor-pointer"
+          data-testid="user-menu-theme"
+        >
+          {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+          {theme === "dark" ? "Light mode" : "Dark mode"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => signOut()}
+          className="cursor-pointer text-destructive focus:text-destructive"
+          data-testid="user-menu-logout"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 function MobileNav({ isAdmin }: { isAdmin: boolean }) {
   return (
-    <header className="flex md:hidden h-16 items-center justify-between px-4 border-b bg-sidebar">
-      <h2 className="text-xl font-serif font-bold text-sidebar-foreground">Paceify</h2>
+    <header className="flex md:hidden h-14 items-center justify-between px-4 border-b border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar">
+      <span className="text-base font-semibold tracking-tight" style={{ color: "#111827" }}>Paceify</span>
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="md:hidden">
@@ -123,55 +302,10 @@ function MobileNav({ isAdmin }: { isAdmin: boolean }) {
             <span className="sr-only">Toggle menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-64 p-0 bg-sidebar border-r">
-          <Sidebar className="flex h-full flex-col" isAdmin={isAdmin} />
+        <SheetContent side="left" className="w-52 p-0 bg-white dark:bg-sidebar border-r border-[#EBEBEB] dark:border-border">
+          <Sidebar className="flex h-full flex-col" isAdmin={isAdmin} whatsappConnected={false} />
         </SheetContent>
       </Sheet>
     </header>
-  );
-}
-
-function UserMenu() {
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const [, setLocation] = useLocation();
-  const { theme, setTheme } = useTheme();
-
-  if (!user) return <Skeleton className="h-10 w-full" />;
-
-  const initials = user.primaryEmailAddress?.emailAddress?.substring(0, 2).toUpperCase() || "U";
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="w-full justify-start gap-3 px-2 hover:bg-sidebar-accent" data-testid="user-menu-trigger">
-          <Avatar className="h-8 w-8 rounded-md">
-            <AvatarImage src={user.imageUrl} />
-            <AvatarFallback className="rounded-md bg-primary/10 text-primary">{initials}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col items-start text-sm truncate flex-1">
-            <span className="font-medium truncate w-full text-left text-sidebar-foreground">{user.fullName || "User"}</span>
-            <span className="text-xs text-sidebar-foreground/60 truncate w-full text-left">{user.primaryEmailAddress?.emailAddress}</span>
-          </div>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56" data-testid="user-menu-content">
-        <DropdownMenuLabel>My Account</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => setLocation("/account")} className="cursor-pointer" data-testid="user-menu-account">
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Settings</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="cursor-pointer" data-testid="user-menu-theme">
-          {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-          <span>Toggle Theme</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer text-destructive focus:text-destructive" data-testid="user-menu-logout">
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
