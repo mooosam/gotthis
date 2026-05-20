@@ -31,10 +31,10 @@ export default function DataPolicyPage() {
             {toc.map((t) => <a key={t.id} href={`#${t.id}`}>{t.label}</a>)}
           </aside>
           <div className="pub-legal-content">
-            <p>This Data Use Policy explains what personal data The Ritual AI Ltd. collects, why we collect it, how we use it, and the rights you have over it. We are committed to handling your data with care, transparency, and respect.</p>
+            <p>This Data Use Policy explains what personal data Paceify Ltd. collects, why we collect it, how we use it, and the rights you have over it. We are committed to handling your data with care, transparency, and respect.</p>
 
             <h2 id="who">1. Who We Are</h2>
-            <p>The Ritual AI Ltd. is the data controller for personal data collected through the theritual.app website and service. If you have questions about this policy, contact us at <a href="mailto:privacy@theritual.app">privacy@theritual.app</a>.</p>
+            <p>Paceify Ltd. is the data controller for personal data collected through the paceify.app website and service. If you have questions about this policy, contact us at <a href="mailto:privacy@paceify.app">privacy@paceify.app</a>.</p>
 
             <h2 id="collect">2. Data We Collect</h2>
             <p>We collect the following categories of personal data:</p>
@@ -79,7 +79,7 @@ export default function DataPolicyPage() {
               <li>Anonymised, aggregated usage statistics may be retained indefinitely.</li>
               <li>Billing records are retained for 7 years as required by financial regulations.</li>
             </ul>
-            <p>You can request early deletion by contacting <a href="mailto:privacy@theritual.app">privacy@theritual.app</a>.</p>
+            <p>You can request early deletion by contacting <a href="mailto:privacy@paceify.app">privacy@paceify.app</a>.</p>
 
             <h2 id="security">6. Security</h2>
             <p>We take security seriously and implement the following measures:</p>
@@ -90,7 +90,7 @@ export default function DataPolicyPage() {
               <li>Access to production systems is restricted and logged.</li>
               <li>We perform regular security reviews and dependency audits.</li>
             </ul>
-            <p>Despite these measures, no system is completely secure. Please notify us immediately at <a href="mailto:security@theritual.app">security@theritual.app</a> if you believe your account has been compromised.</p>
+            <p>Despite these measures, no system is completely secure. Please notify us immediately at <a href="mailto:security@paceify.app">security@paceify.app</a> if you believe your account has been compromised.</p>
 
             <h2 id="rights">7. Your Rights</h2>
             <p>Depending on your jurisdiction, you may have the following rights regarding your personal data:</p>
@@ -103,19 +103,19 @@ export default function DataPolicyPage() {
               <li><strong>Objection</strong> — Object to certain types of processing.</li>
               <li><strong>Withdraw consent</strong> — Where processing is based on consent, withdraw it at any time.</li>
             </ul>
-            <p>To exercise any of these rights, contact us at <a href="mailto:privacy@theritual.app">privacy@theritual.app</a>. We will respond within 30 days.</p>
+            <p>To exercise any of these rights, contact us at <a href="mailto:privacy@paceify.app">privacy@paceify.app</a>. We will respond within 30 days.</p>
 
             <h2 id="international">8. International Data Transfers</h2>
             <p>Our infrastructure is primarily based in the European Union. Where data is transferred outside the EU/EEA (for example, to Anthropic's API infrastructure in the United States), we ensure appropriate safeguards are in place, including Standard Contractual Clauses approved by the European Commission.</p>
 
             <h2 id="children">9. Children</h2>
-            <p>The Ritual is not directed at children under the age of 16. We do not knowingly collect personal data from anyone under 16. If you believe a child has provided us with personal data, please contact us immediately and we will delete it.</p>
+            <p>Paceify is not intended for children under the age of 16. We do not knowingly collect personal data from anyone under 16. If you believe a child has provided us with personal data, please contact us immediately and we will delete it.</p>
 
             <h2 id="changes">10. Changes to This Policy</h2>
             <p>We may update this Data Use Policy from time to time. We will notify you of significant changes via email or an in-app notice at least 14 days before they take effect. The "last updated" date at the top of this page always reflects the most recent version.</p>
 
             <h2 id="contact">11. Contact</h2>
-            <p>For any privacy-related questions or requests, contact our Data Protection contact at <a href="mailto:privacy@theritual.app">privacy@theritual.app</a>, or via our <Link href="/contact">Contact page</Link>.</p>
+            <p>For any privacy-related questions or requests, contact our Data Protection contact at <a href="mailto:privacy@paceify.app">privacy@paceify.app</a>, or via our <Link href="/contact">Contact page</Link>.</p>
           </div>
         </div>
       </div>

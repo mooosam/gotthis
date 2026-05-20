@@ -158,16 +158,20 @@ export default function LandingPage() {
             <p className="pub-sub">
               No new apps. No logins. Just text your progress and watch your dashboard grow.
             </p>
-            <div className="pub-qr-card">
+            <Link
+              href="/sign-up"
+              className="pub-qr-card"
+              style={{ display: "flex", alignItems: "center", gap: 22, textDecoration: "none", cursor: "pointer" }}
+            >
               <div className="pub-qr-frame">
                 <QrSvg />
               </div>
               <div>
-                <div className="pub-qr-title">↳ Scan Me</div>
-                <div className="pub-qr-headline">Scan to start your first ritual.</div>
-                <div className="pub-qr-micro">Takes 10 seconds. No download required.</div>
+                <div className="pub-qr-title">↳ Scan or click to sign up</div>
+                <div className="pub-qr-headline">Create your Paceify account in 10 seconds.</div>
+                <div className="pub-qr-micro">No download required.</div>
               </div>
-            </div>
+            </Link>
             <div style={{ display: "flex", gap: 12, marginTop: 24, alignItems: "center" }}>
               <Link href="/sign-up" className="pub-btn pub-btn-lg">Get Started Free</Link>
               <Link href="/pricing" className="pub-btn pub-btn-ghost pub-btn-lg" style={{ opacity: 0.7 }}>
@@ -193,7 +197,7 @@ export default function LandingPage() {
             <div className="pub-browser">
               <div className="pub-browser-bar">
                 <div className="pub-dots"><span /><span /><span /></div>
-                <div className="pub-url">theritual.app/dashboard</div>
+                <div className="pub-url">paceify.app/dashboard</div>
               </div>
               <div className="pub-browser-body">
                 <div className="pub-dash-header">
@@ -259,7 +263,7 @@ export default function LandingPage() {
                 <div className="pub-chat-header">
                   <div className="pub-avatar">R</div>
                   <div className="pub-chat-meta">
-                    <div className="pub-chat-name">The Ritual</div>
+                    <div className="pub-chat-name">Paceify</div>
                     <div className="pub-chat-status">online · auto-syncing</div>
                   </div>
                 </div>
@@ -348,7 +352,7 @@ export default function LandingPage() {
           <div className="pub-product">
             <div className="pub-product-bar">
               <div className="pub-dots"><span /><span /><span /></div>
-              <div className="pub-product-label">theritual.app · dashboard</div>
+              <div className="pub-product-label">paceify.app · dashboard</div>
             </div>
             <div className="pub-product-body" style={{ position: "relative" }}>
               <aside className="pub-side">

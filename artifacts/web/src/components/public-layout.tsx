@@ -25,7 +25,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
       <header className={`pub-nav${scrolled ? " pub-nav-scrolled" : ""}`}>
         <Link href="/" className="pub-logo">
           <span className="pub-logo-dot" />
-          THE&nbsp;RITUAL
+          PACEIFY
         </Link>
         <nav className="pub-nav-links">
           <Link href="/" className={isActive("/")}>Home</Link>
@@ -43,7 +43,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
       <footer className="pub-footer">
         <div className="pub-foot-grid">
           <div className="pub-foot-col">
-            <span className="pub-foot-brand-name">THE RITUAL</span>
+            <span className="pub-foot-brand-name">PACEIFY</span>
             <p className="pub-foot-brand-desc">
               The most frictionless way to stay honest with yourself. Track your goals via WhatsApp — no new apps, no logins.
             </p>
@@ -68,7 +68,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
           </div>
         </div>
         <div className="pub-foot-bottom">
-          <div>© {new Date().getFullYear()} The Ritual AI Ltd. All rights reserved.</div>
+          <div>© {new Date().getFullYear()} Paceify Ltd. All rights reserved.</div>
           <div>Created for those who value the ritual.</div>
         </div>
       </footer>

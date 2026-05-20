@@ -37,7 +37,7 @@ export default function ContactPage() {
         <aside className="pub-contact-aside">
           <div className="pub-contact-item">
             <h4>Email</h4>
-            <a href="mailto:hello@theritual.app">hello@theritual.app</a>
+            <a href="mailto:hello@paceify.app">hello@paceify.app</a>
           </div>
           <div className="pub-contact-item">
             <h4>Support hours</h4>

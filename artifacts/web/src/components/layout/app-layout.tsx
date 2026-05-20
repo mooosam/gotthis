@@ -83,7 +83,7 @@ function Sidebar({ className, isAdmin }: { className?: string; isAdmin: boolean 
   return (
     <div className={className}>
       <div className="p-6">
-        <h2 className="text-2xl font-serif font-bold tracking-tight text-sidebar-foreground">The Ritual</h2>
+        <h2 className="text-2xl font-serif font-bold tracking-tight text-sidebar-foreground">Paceify</h2>
       </div>
       <nav className="flex-1 px-4 space-y-2">
         {navItems.map((item) => {
@@ -115,7 +115,7 @@ function Sidebar({ className, isAdmin }: { className?: string; isAdmin: boolean 
 function MobileNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <header className="flex md:hidden h-16 items-center justify-between px-4 border-b bg-sidebar">
-      <h2 className="text-xl font-serif font-bold text-sidebar-foreground">The Ritual</h2>
+      <h2 className="text-xl font-serif font-bold text-sidebar-foreground">Paceify</h2>
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="md:hidden">

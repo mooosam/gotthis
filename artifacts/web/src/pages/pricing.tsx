@@ -146,7 +146,7 @@ export default function PricingPage() {
             Everything you need to <em>know.</em>
           </h2>
           <p style={{ color: "#64748B", fontSize: 17, marginBottom: 36, maxWidth: 420, margin: "0 auto 36px", lineHeight: 1.6 }}>
-            We've answered the most common questions about plans, billing, and how The Ritual works.
+            We've answered the most common questions about plans, billing, and how Paceify works.
           </p>
           <Link href="/faq" className="pub-btn pub-btn-outline">Read the FAQ →</Link>
         </div>

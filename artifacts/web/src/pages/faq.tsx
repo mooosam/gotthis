@@ -19,12 +19,12 @@ const sections: FaqSection[] = [
     title: "Getting Started",
     items: [
       {
-        q: "What is The Ritual?",
-        a: "The Ritual is a WhatsApp-first goal tracking assistant. You set up your goals on the dashboard, then simply text your progress to a WhatsApp number. Our AI reads your messages, updates the right goals, and keeps your dashboard growing — no new apps, no habits to form other than the ones you already have.",
+        q: "What is Paceify?",
+        a: "Paceify is a WhatsApp-first goal tracking assistant. You set up your goals on the dashboard, then simply text your progress to a WhatsApp number. Our AI reads your messages, updates the right goals, and keeps your dashboard growing — no new apps, no habits to form other than the ones you already have.",
       },
       {
         q: "Do I need to download anything?",
-        a: "No. You only need a WhatsApp account (which you already have) and access to a web browser to view your dashboard. The Ritual does not require you to install any app.",
+        a: "No. You only need a WhatsApp account (which you already have) and access to a web browser to view your dashboard. Paceify does not require you to install any app.",
       },
       {
         q: "How do I connect my WhatsApp?",
@@ -54,7 +54,7 @@ const sections: FaqSection[] = [
       },
       {
         q: "Will the bot message me first?",
-        a: "Yes — if you've enabled daily check-ins in your settings, The Ritual will send you a morning nudge to log your progress. You can customise the time and frequency, or turn it off entirely.",
+        a: "Yes — if you've enabled daily check-ins in your settings, Paceify will send you a morning nudge to log your progress. You can customise the time and frequency, or turn it off entirely.",
       },
       {
         q: "Is there a message limit?",
@@ -77,7 +77,7 @@ const sections: FaqSection[] = [
       },
       {
         q: "What goal types are supported?",
-        a: "The Ritual supports habits (daily/weekly recurring), outcomes (one-time targets with a deadline), and milestones (multi-step projects). You can set a target value, unit, and cadence for each.",
+        a: "Paceify supports habits (daily/weekly recurring), outcomes (one-time targets with a deadline), and milestones (multi-step projects). You can set a target value, unit, and cadence for each.",
       },
       {
         q: "What if I miss a day?",
@@ -180,7 +180,7 @@ export default function FaqPage() {
             Knowledge base
           </span>
           <h1>Everything you need to <em>know.</em></h1>
-          <p>Common questions about The Ritual, how the bot works, and what to expect.</p>
+          <p>Common questions about Paceify, how the bot works, and what to expect.</p>
         </div>
       </div>
 

@@ -153,7 +153,7 @@ export default function OnboardingPage() {
       await completeOnboarding.mutateAsync();
       queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
 
-      toast({ title: "Setup complete", description: "Welcome to The Ritual." });
+      toast({ title: "Setup complete", description: "Welcome to Paceify." });
       setLocation("/dashboard");
     } catch {
       toast({ title: "Failed to complete setup. Please try again.", variant: "destructive" });
