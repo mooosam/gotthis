@@ -29,6 +29,7 @@ import AdminOverviewPage from "@/pages/admin";
 import AdminUsersPage from "@/pages/admin/users";
 import AdminUserDetailPage from "@/pages/admin/user-detail";
 import AdminPlansPage from "@/pages/admin/plans";
+import AdminStripePage from "@/pages/admin/stripe";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -198,6 +199,11 @@ function ClerkProviderWithRoutes() {
 
           <Route path="/admin/plans">
             <Show when="signed-in"><AdminPlansPage /></Show>
+            <Show when="signed-out"><Redirect to="/" /></Show>
+          </Route>
+
+          <Route path="/admin/stripe">
+            <Show when="signed-in"><AdminStripePage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
           </Route>
 

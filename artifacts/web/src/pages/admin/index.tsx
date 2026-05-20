@@ -48,6 +48,9 @@ export default function AdminOverviewPage() {
             <Link href="/admin/plans">
               <Button variant="outline" size="sm" data-testid="button-go-plans">Manage plans</Button>
             </Link>
+            <Link href="/admin/stripe">
+              <Button variant="outline" size="sm" data-testid="button-go-stripe">Stripe</Button>
+            </Link>
           </div>
         </div>
 

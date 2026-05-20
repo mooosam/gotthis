@@ -15,6 +15,7 @@ import emailRouter from "./email";
 import shareRouter from "./share";
 import skipCreditsRouter from "./skip-credits";
 import adminRouter from "./admin";
+import adminStripeRouter from "./admin-stripe";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(emailRouter);
 router.use(shareRouter);
 router.use(skipCreditsRouter);
 router.use(adminRouter);
+router.use(adminStripeRouter);
 
 export default router;

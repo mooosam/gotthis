@@ -5,6 +5,25 @@ import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
 import { startNewsletterCron } from "./lib/email/newsletter.js";
 import { startDailyResetCron } from "./lib/goals/daily-reset.js";
 import { seedDefaultPlans } from "./lib/seed-plans.js";
+import { runMigrations } from "stripe-replit-sync";
+import { getStripeSync } from "./stripeClient";
+
+async function initStripe() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return;
+  try {
+    await runMigrations({ databaseUrl, schema: "stripe" });
+    const stripeSync = await getStripeSync();
+    const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
+    await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
+    stripeSync.syncBackfill()
+      .then(() => logger.info("Stripe backfill complete"))
+      .catch((err) => logger.warn({ err }, "Stripe backfill failed"));
+    logger.info("Stripe initialized");
+  } catch (err) {
+    logger.warn({ err }, "Stripe init skipped — connect the Stripe integration to enable payments");
+  }
+}
 
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
@@ -28,6 +47,8 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+await initStripe();
 
 app.listen(port, (err) => {
   if (err) {
