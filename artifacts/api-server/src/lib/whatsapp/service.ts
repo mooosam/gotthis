@@ -310,132 +310,30 @@ export async function startWhatsApp(): Promise<void> {
 }
 
 export async function requestPairingCode(phone: string): Promise<string> {
+  // Disconnect any existing socket, then reconnect using the pairing-code path
+  // inside connect(). connect() calls sock.requestPairingCode() via a 3-second
+  // setTimeout — BEFORE the first QR is generated — which is the timing Baileys
+  // requires. Waiting for a QR event and calling it afterwards (the old approach)
+  // was too late and caused Baileys to throw.
   await disconnectWhatsApp();
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 500));
+  await connect(phone);
 
-  if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-  }
-
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
-
-  currentStatus = "connecting";
-  currentQR = null;
-  pairingCode = null;
-
-  sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    logger: logger.child({ module: "baileys" }) as Parameters<typeof makeWASocket>[0]["logger"],
-    browser: ["The Ritual AI", "Chrome", "1.0.0"],
-    syncFullHistory: false,
-    generateHighQualityLinkPreview: false,
+  // Poll for pairingCode to be written by the setTimeout inside connect().
+  // Give it up to 30 seconds (the 3-second delay + Baileys round-trip).
+  return new Promise<string>((resolve, reject) => {
+    const deadline = Date.now() + 30_000;
+    const poll = setInterval(() => {
+      if (pairingCode) {
+        clearInterval(poll);
+        logger.info({ phone: phone.replace(/\D/g, "").slice(-4) + "****" }, "Pairing code issued");
+        resolve(pairingCode);
+      } else if (Date.now() > deadline) {
+        clearInterval(poll);
+        reject(new Error("Timed out waiting for pairing code — check the phone number and try again"));
+      }
+    }, 250);
   });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Timed out waiting for socket open")), 10000);
-
-    sock!.ev.on("connection.update", (update) => {
-      if (update.connection === "open" || update.qr) {
-        clearTimeout(timer);
-        resolve();
-      }
-      if (update.connection === "close") {
-        clearTimeout(timer);
-        reject(new Error("Connection closed before pairing"));
-      }
-    });
-  });
-
-  const normalised = phone.replace(/\D/g, "");
-  const code = await sock.requestPairingCode(normalised);
-  pairingCode = code;
-  pendingPairingPhone = phone;
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", async (update: BaileysEventMap["connection.update"]) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      currentQR = qr;
-      currentStatus = "connecting";
-    }
-
-    if (connection === "close") {
-      currentStatus = "disconnected";
-      currentQR = null;
-      pairingCode = null;
-      pendingPairingPhone = null;
-      connectedPhone = null;
-      const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
-      const shouldReconnect = reason !== DisconnectReason.loggedOut;
-      if (shouldReconnect) {
-        reconnectTimer = setTimeout(() => {
-          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect failed"));
-        }, 5000);
-      } else {
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        reconnectTimer = setTimeout(() => {
-          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect (fresh) failed"));
-        }, 3000);
-      }
-    }
-
-    if (connection === "open") {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      currentStatus = "open";
-      currentQR = null;
-      pairingCode = null;
-      pendingPairingPhone = null;
-      const rawJid = sock?.user?.id ?? "";
-      connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
-      logger.info({ connectedPhone }, "WhatsApp connected via pairing code");
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
-    if (type !== "notify") return;
-    for (const msg of messages) {
-      if (!msg.message) continue;
-
-      const msgId = msg.key.id ?? "";
-      if (msg.key.fromMe && botSentIds.has(msgId)) {
-        botSentIds.delete(msgId);
-        continue;
-      }
-
-      const jid = msg.key.remoteJid;
-      if (!jid || jid.endsWith("@g.us")) continue;
-
-      let phone: string;
-      if (jid.endsWith("@lid") && msg.key.fromMe && connectedPhone) {
-        phone = connectedPhone;
-      } else {
-        phone = jidToPhone(jid);
-      }
-
-      const text = msg.message.conversation ?? msg.message.extendedTextMessage?.text ?? "";
-      if (!text.trim()) continue;
-      logger.info({ phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe }, "Incoming WhatsApp message");
-      try {
-        await handleIncomingMessage(jid, phone, text);
-      } catch (err) {
-        logger.error({ err }, "Error handling WhatsApp message");
-        await sendTracked(jid, "Something went wrong. Please try again in a moment.");
-      }
-    }
-  });
-
-  logger.info({ phone: normalised.slice(-4) + "****" }, "Pairing code issued");
-  return code;
 }
 
 export async function disconnectWhatsApp(): Promise<void> {
