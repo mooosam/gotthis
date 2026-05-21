@@ -76,7 +76,7 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 const allowedOrigins: (string | RegExp)[] = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
-  : [/localhost/, /\.replit\.dev$/, /\.repl\.co$/, /\.replit\.app$/];
+  : [/localhost/, /\.replit\.dev$/, /\.repl\.co$/, /\.replit\.app$/, "https://gotthis.one", "https://www.gotthis.one"];
 
 app.use(
   cors({
