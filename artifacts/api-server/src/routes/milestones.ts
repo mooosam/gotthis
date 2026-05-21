@@ -8,7 +8,7 @@ const router: IRouter = Router();
 
 router.get("/goals/:goalId/milestones", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { goalId } = req.params;
+  const goalId = req.params["goalId"] as string;
 
   const [goal] = await db
     .select({ id: goalsTable.id })
@@ -31,7 +31,7 @@ router.get("/goals/:goalId/milestones", requireAuth, async (req, res): Promise<v
 
 router.post("/goals/:goalId/milestones", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { goalId } = req.params;
+  const goalId = req.params["goalId"] as string;
 
   const [goal] = await db
     .select({ id: goalsTable.id })
@@ -75,7 +75,8 @@ router.post("/goals/:goalId/milestones", requireAuth, async (req, res): Promise<
 
 router.patch("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { goalId, milestoneId } = req.params;
+  const goalId = req.params["goalId"] as string;
+  const milestoneId = req.params["milestoneId"] as string;
 
   const body = req.body as { title?: string; order?: number; completed?: boolean };
   const updates: Partial<typeof milestonesTable.$inferInsert> = {};
@@ -113,7 +114,8 @@ router.patch("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req, 
 
 router.delete("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { goalId, milestoneId } = req.params;
+  const goalId = req.params["goalId"] as string;
+  const milestoneId = req.params["milestoneId"] as string;
 
   const [milestone] = await db
     .delete(milestonesTable)

@@ -35,11 +35,11 @@ async function getConnectorKey(): Promise<{ secretKey: string; webhookSecret?: s
       }
     );
     if (!resp.ok) return null;
-    const data = await resp.json();
+    const data = await resp.json() as { items?: Array<{ settings?: Record<string, string> }> };
     const settings = data.items?.[0]?.settings;
     const secretKey = settings?.secret_key ?? settings?.secret;
-    if (!secretKey) return null;
-    return { secretKey, webhookSecret: settings.webhook_secret ?? settings.webhook_signing_secret };
+    if (!secretKey || !settings) return null;
+    return { secretKey, webhookSecret: settings["webhook_secret"] ?? settings["webhook_signing_secret"] };
   } catch {
     return null;
   }

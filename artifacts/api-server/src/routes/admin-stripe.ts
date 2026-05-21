@@ -10,14 +10,14 @@ router.use(requireAuth, requireAdmin);
 
 // ── API key management ──────────────────────────────────────────────────────
 
-router.get("/admin/stripe/key", async (_req, res) => {
+router.get("/admin/stripe/key", async (_req, res): Promise<void> => {
   try {
     const [row] = await db
       .select()
       .from(appSettingsTable)
       .where(eq(appSettingsTable.key, "stripe_secret_key"))
       .limit(1);
-    if (!row) return res.json({ stored: false, preview: null });
+    if (!row) { res.json({ stored: false, preview: null }); return; }
     const key = row.value;
     const preview = key.startsWith("sk_") ? `${key.slice(0, 7)}…${key.slice(-4)}` : `${key.slice(0, 4)}…${key.slice(-4)}`;
     res.json({ stored: true, preview, updatedAt: row.updatedAt });
@@ -27,14 +27,14 @@ router.get("/admin/stripe/key", async (_req, res) => {
   }
 });
 
-router.post("/admin/stripe/key", async (req, res) => {
+router.post("/admin/stripe/key", async (req, res): Promise<void> => {
   const { key } = req.body as { key?: string };
   if (!key || typeof key !== "string" || key.trim().length < 10) {
-    return res.status(400).json({ error: "A valid Stripe secret key is required" });
+    res.status(400).json({ error: "A valid Stripe secret key is required" }); return;
   }
   const trimmed = key.trim();
   if (!trimmed.startsWith("sk_")) {
-    return res.status(400).json({ error: "Key must start with sk_ (Stripe secret key)" });
+    res.status(400).json({ error: "Key must start with sk_ (Stripe secret key)" }); return;
   }
   try {
     await db
@@ -61,14 +61,14 @@ router.delete("/admin/stripe/key", async (_req, res) => {
 
 // ── Webhook secret management ────────────────────────────────────────────────
 
-router.get("/admin/stripe/webhook-secret", async (_req, res) => {
+router.get("/admin/stripe/webhook-secret", async (_req, res): Promise<void> => {
   try {
     const [row] = await db
       .select()
       .from(appSettingsTable)
       .where(eq(appSettingsTable.key, "stripe_billing_webhook_secret"))
       .limit(1);
-    if (!row) return res.json({ stored: false, preview: null });
+    if (!row) { res.json({ stored: false, preview: null }); return; }
     const val = row.value;
     const preview = `${val.slice(0, 6)}…${val.slice(-4)}`;
     res.json({ stored: true, preview, updatedAt: row.updatedAt });
@@ -78,14 +78,14 @@ router.get("/admin/stripe/webhook-secret", async (_req, res) => {
   }
 });
 
-router.post("/admin/stripe/webhook-secret", async (req, res) => {
+router.post("/admin/stripe/webhook-secret", async (req, res): Promise<void> => {
   const { secret } = req.body as { secret?: string };
   if (!secret || typeof secret !== "string" || secret.trim().length < 10) {
-    return res.status(400).json({ error: "A valid webhook signing secret is required" });
+    res.status(400).json({ error: "A valid webhook signing secret is required" }); return;
   }
   const trimmed = secret.trim();
   if (!trimmed.startsWith("whsec_")) {
-    return res.status(400).json({ error: "Secret must start with whsec_ (Stripe webhook signing secret)" });
+    res.status(400).json({ error: "Secret must start with whsec_ (Stripe webhook signing secret)" }); return;
   }
   try {
     await db

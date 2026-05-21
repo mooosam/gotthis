@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { eq, count } from "drizzle-orm";
+import { eq, count, and, ne } from "drizzle-orm";
 import { db, usersTable, goalsTable } from "@workspace/db";
 import { getTierConfig } from "../lib/tierConfig";
 
@@ -67,7 +67,13 @@ export function requireGoalSlot() {
     const [{ value: goalCount }] = await db
       .select({ value: count() })
       .from(goalsTable)
-      .where(eq(goalsTable.userId, userId));
+      .where(
+        and(
+          eq(goalsTable.userId, userId),
+          ne(goalsTable.status, "archived"),
+          ne(goalsTable.status, "completed"),
+        )
+      );
 
     if (goalCount >= cfg.goalCountLimit) {
       res.status(402).json({

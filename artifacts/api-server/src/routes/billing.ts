@@ -46,10 +46,10 @@ async function findOrCreateCustomer(
 
 type AR = Request & { userId: string };
 
-router.get("/billing/status", requireAuth, async (req, res) => {
+router.get("/billing/status", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = (req as AR).userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [user] = await db
       .select()
@@ -57,7 +57,7 @@ router.get("/billing/status", requireAuth, async (req, res) => {
       .where(eq(usersTable.id, userId))
       .limit(1);
 
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
     const prices = await getPriceSettings();
     const pricesConfigured = !!(
@@ -88,10 +88,10 @@ router.get("/billing/status", requireAuth, async (req, res) => {
 
 // ── POST /api/billing/checkout ───────────────────────────────────────────────
 
-router.post("/billing/checkout", requireAuth, async (req, res) => {
+router.post("/billing/checkout", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = (req as AR).userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { tier, period = "monthly" } = req.body as {
       tier: "pro" | "elite";
@@ -99,7 +99,7 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
     };
 
     if (!["pro", "elite"].includes(tier)) {
-      return res.status(400).json({ error: "Invalid tier" });
+      res.status(400).json({ error: "Invalid tier" }); return;
     }
 
     const prices = await getPriceSettings();
@@ -109,9 +109,9 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
     else if (tier === "elite") priceId = prices.stripe_price_elite_monthly;
 
     if (!priceId) {
-      return res.status(503).json({
+      res.status(503).json({
         error: "Stripe products not yet configured. Ask your admin to run Setup Products.",
-      });
+      }); return;
     }
 
     const [user] = await db
@@ -119,7 +119,7 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1);
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
     const stripe = await getUncachableStripeClient();
     const customerId = await findOrCreateCustomer(stripe, user);
@@ -147,10 +147,10 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
 
 // ── GET /api/billing/portal ──────────────────────────────────────────────────
 
-router.get("/billing/portal", requireAuth, async (req, res) => {
+router.get("/billing/portal", requireAuth, async (req, res): Promise<void> => {
   try {
     const userId = (req as AR).userId;
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [user] = await db
       .select()
@@ -159,9 +159,9 @@ router.get("/billing/portal", requireAuth, async (req, res) => {
       .limit(1);
 
     if (!user?.stripeCustomerId) {
-      return res.status(400).json({
+      res.status(400).json({
         error: "No billing account found. Upgrade first to access the portal.",
-      });
+      }); return;
     }
 
     const stripe = await getUncachableStripeClient();

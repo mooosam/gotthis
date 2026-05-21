@@ -19,7 +19,7 @@ interface RoadmapStep {
 
 router.post("/goals/:id/roadmap", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { id } = req.params;
+  const id = req.params["id"] as string;
 
   // Per-minute throttle so this Sonnet-backed endpoint can't be hammered.
   const throttle = checkPerMinuteThrottle(userId);
@@ -160,7 +160,7 @@ Rules:
 
 router.get("/goals/:id/forecast", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { id } = req.params;
+  const id = req.params["id"] as string;
 
   // Forecast is just SQL + math (no Claude call) but still gated by the
   // per-minute throttle so abusers can't use it to amplify DB load either.

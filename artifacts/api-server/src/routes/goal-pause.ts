@@ -8,7 +8,7 @@ const router: IRouter = Router();
 
 router.post("/goals/:id/pause", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { id } = req.params;
+  const id = req.params["id"] as string;
 
   const parsed = PauseGoalBody.safeParse(req.body ?? {});
   if (!parsed.success) {
@@ -35,7 +35,7 @@ router.post("/goals/:id/pause", requireAuth, async (req, res): Promise<void> => 
 
 router.post("/goals/:id/resume", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const { id } = req.params;
+  const id = req.params["id"] as string;
 
   const [goal] = await db
     .update(goalsTable)
