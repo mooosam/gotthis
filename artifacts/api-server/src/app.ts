@@ -90,6 +90,18 @@ app.use(
     },
   }),
 );
+
+// CORS error handler — must come immediately after cors() so it catches
+// the Error thrown by the origin callback before Express's default handler
+// turns it into a 500 HTML stack trace.
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof Error && err.message === "CORS: origin not allowed") {
+    res.status(403).json({ error: "CORS: origin not allowed" });
+    return;
+  }
+  next(err);
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
