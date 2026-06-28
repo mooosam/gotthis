@@ -124,6 +124,35 @@ router.post("/billing/checkout", requireAuth, async (req, res): Promise<void> =>
     const stripe = await getUncachableStripeClient();
     const customerId = await findOrCreateCustomer(stripe, user);
 
+    // ── Existing subscriber: update subscription item instead of creating a
+    //    second subscription (which would double-charge the user).
+    if (user.stripeSubscriptionId) {
+      let sub: Stripe.Subscription | null = null;
+      try {
+        sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+          expand: ["items.data"],
+        });
+      } catch {
+        // Subscription no longer exists in Stripe — fall through to checkout.
+        logger.warn({ subscriptionId: user.stripeSubscriptionId, userId }, "existing subscriptionId not found in Stripe, creating new checkout");
+      }
+
+      if (sub && (sub.status === "active" || sub.status === "trialing")) {
+        const item = sub.items.data[0];
+        if (!item) { res.status(500).json({ error: "Subscription has no items" }); return; }
+
+        await stripe.subscriptionItems.update(item.id, {
+          price: priceId,
+          proration_behavior: "create_prorations",
+        });
+
+        // The customer.subscription.updated webhook will update the DB tier.
+        logger.info({ userId, priceId }, "subscription item updated — tier upgrade applied");
+        res.json({ upgraded: true });
+        return;
+      }
+    }
+
     const origin = req.headers.origin ?? req.headers.referer ?? "http://localhost:3000";
     const base = origin.replace(/\/$/, "");
 

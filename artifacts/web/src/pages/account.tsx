@@ -94,6 +94,7 @@ const PLAN_FEATURES: Record<string, { label: string; features: string[]; price: 
 
 function BillingSection({ tier }: { tier: string }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [proAnnual, setProAnnual] = useState(false);
 
   const checkoutMutation = useMutation({
@@ -107,9 +108,15 @@ function BillingSection({ tier }: { tier: string }) {
         const e = await r.json();
         throw new Error(e.error ?? "Failed to start checkout");
       }
-      return r.json() as Promise<{ url: string }>;
+      return r.json() as Promise<{ url?: string; upgraded?: boolean }>;
     },
-    onSuccess: ({ url }) => { if (url) window.location.href = url; },
+    onSuccess: ({ url, upgraded }) => {
+      if (url) { window.location.href = url; return; }
+      if (upgraded) {
+        toast({ title: "Plan upgraded!", description: "Your plan has been updated. It may take a moment to reflect." });
+        queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      }
+    },
     onError: (err: Error) => toast({ title: "Checkout failed", description: err.message, variant: "destructive" }),
   });
 
