@@ -5,6 +5,12 @@ import { getQR, getStatus, getPairingCode, getConnectedPhone, disconnectWhatsApp
 
 const router: IRouter = Router();
 
+// Public — no auth. Landing page uses this to build the wa.me QR code.
+router.get("/whatsapp/bot-number", (_req, res): void => {
+  const phone = getConnectedPhone();
+  res.json({ phone: phone ?? null });
+});
+
 router.get("/whatsapp/status", requireAuth, requireAdmin, (_req, res): void => {
   res.json({ status: getStatus(), hasQR: getQR() !== null, hasPairingCode: getPairingCode() !== null, connectedPhone: getConnectedPhone() });
 });

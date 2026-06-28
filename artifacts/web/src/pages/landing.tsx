@@ -1,5 +1,6 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { Link } from "wouter";
+import { QRCodeSVG } from "qrcode.react";
 import PublicLayout from "@/components/public-layout";
 
 function seededRand(seed: number) {
@@ -10,7 +11,7 @@ function seededRand(seed: number) {
   };
 }
 
-function QrSvg() {
+function QrPlaceholder() {
   const modules = useMemo(() => {
     const rng = seededRand(42);
     const skip = (x: number, y: number) =>
@@ -56,6 +57,17 @@ export default function LandingPage() {
   const liveBubbleRef = useRef<HTMLDivElement>(null);
   const counterValRef = useRef<HTMLDivElement>(null);
   const counterDeltaRef = useRef<HTMLDivElement>(null);
+  const [waUrl, setWaUrl] = useState<string | null>(null);
+
+  // Fetch the bot's WhatsApp number to build a real wa.me QR code
+  useEffect(() => {
+    fetch("/api/whatsapp/bot-number")
+      .then((r) => r.json())
+      .then((data: { phone: string | null }) => {
+        if (data.phone) setWaUrl(`https://wa.me/${data.phone}?text=Hi`);
+      })
+      .catch(() => {});
+  }, []);
 
   // Sticky CTA after hero scroll
   useEffect(() => {
@@ -158,20 +170,33 @@ export default function LandingPage() {
             <p className="pub-sub">
               No new apps. No logins. Just text your progress and watch your dashboard grow.
             </p>
-            <Link
-              href="/sign-up"
+            <a
+              href={waUrl ?? "/sign-up"}
               className="pub-qr-card"
               style={{ display: "flex", alignItems: "center", gap: 22, textDecoration: "none", cursor: "pointer" }}
+              {...(waUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             >
               <div className="pub-qr-frame">
-                <QrSvg />
+                {waUrl ? (
+                  <QRCodeSVG
+                    value={waUrl}
+                    size={120}
+                    bgColor="#ffffff"
+                    fgColor="#121212"
+                    style={{ display: "block", width: "100%", height: "100%" }}
+                  />
+                ) : (
+                  <QrPlaceholder />
+                )}
               </div>
               <div>
-                <div className="pub-qr-title">↳ Scan or click to sign up</div>
+                <div className="pub-qr-title">
+                  {waUrl ? "↳ Scan to open WhatsApp" : "↳ Scan or click to sign up"}
+                </div>
                 <div className="pub-qr-headline">Create your GotThis account in 10 seconds.</div>
                 <div className="pub-qr-micro">No download required.</div>
               </div>
-            </Link>
+            </a>
             <div style={{ display: "flex", gap: 12, marginTop: 24, alignItems: "center" }}>
               <Link href="/sign-up" className="pub-btn pub-btn-lg">Get Started Free</Link>
               <Link href="/pricing" className="pub-btn pub-btn-ghost pub-btn-lg" style={{ opacity: 0.7 }}>
