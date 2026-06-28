@@ -82,6 +82,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+function SidebarLogoutButton() {
+  const { signOut } = useClerk();
+  return (
+    <button
+      onClick={() => signOut()}
+      data-testid="sidebar-logout"
+      className="flex items-center gap-2.5 px-2.5 py-[6px] rounded-lg w-full cursor-pointer transition-colors hover:bg-red-50 dark:hover:bg-red-950/30 group"
+      style={{ fontSize: 14, color: "#9CA3AF" }}
+    >
+      <LogOut className="h-[14px] w-[14px] flex-shrink-0 group-hover:text-red-500 transition-colors" />
+      <span className="group-hover:text-red-500 transition-colors">Log out</span>
+    </button>
+  );
+}
+
 function Sidebar({
   className,
   isAdmin,
@@ -189,6 +204,10 @@ function Sidebar({
           </div>
         )}
       </nav>
+
+      <div className="px-3 pb-4 mt-2">
+        <SidebarLogoutButton />
+      </div>
     </div>
   );
 }
