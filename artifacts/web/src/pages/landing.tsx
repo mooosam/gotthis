@@ -168,7 +168,7 @@ export default function LandingPage() {
               </div>
               <div>
                 <div className="pub-qr-title">↳ Scan or click to sign up</div>
-                <div className="pub-qr-headline">Create your Paceify account in 10 seconds.</div>
+                <div className="pub-qr-headline">Create your GotThis account in 10 seconds.</div>
                 <div className="pub-qr-micro">No download required.</div>
               </div>
             </Link>
@@ -197,7 +197,7 @@ export default function LandingPage() {
             <div className="pub-browser">
               <div className="pub-browser-bar">
                 <div className="pub-dots"><span /><span /><span /></div>
-                <div className="pub-url">paceify.app/dashboard</div>
+                <div className="pub-url">gotthis.one/dashboard</div>
               </div>
               <div className="pub-browser-body">
                 <div className="pub-dash-header">
@@ -263,7 +263,7 @@ export default function LandingPage() {
                 <div className="pub-chat-header">
                   <div className="pub-avatar">R</div>
                   <div className="pub-chat-meta">
-                    <div className="pub-chat-name">Paceify</div>
+                    <div className="pub-chat-name">GotThis</div>
                     <div className="pub-chat-status">online · auto-syncing</div>
                   </div>
                 </div>
@@ -352,7 +352,7 @@ export default function LandingPage() {
           <div className="pub-product">
             <div className="pub-product-bar">
               <div className="pub-dots"><span /><span /><span /></div>
-              <div className="pub-product-label">paceify.app · dashboard</div>
+              <div className="pub-product-label">gotthis.one · dashboard</div>
             </div>
             <div className="pub-product-body" style={{ position: "relative" }}>
               <aside className="pub-side">

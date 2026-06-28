@@ -113,7 +113,7 @@ router.post("/email/inbound", async (req, res): Promise<void> => {
       userId: "unmatched",
       toEmail: FromEmail,
       subject: Subject,
-      body: "We could not find an account linked to this email address. Please sign up at paceify.app to get started.",
+      body: "We could not find an account linked to this email address. Please sign up at gotthis.one to get started.",
       inReplyTo: fallbackMessageId,
       references: fallbackMessageId,
     });
@@ -135,7 +135,7 @@ router.post("/email/inbound", async (req, res): Promise<void> => {
       userId,
       toEmail: FromEmail,
       subject: `Re: ${Subject}`,
-      body: "Email coaching is available on Paceify Pro and Elite plans.\n\nUpgrade at https://paceify.app/account to unlock email coaching, along with 50 messages/day and 10 goals.\n\nYou can still track your goals via WhatsApp.",
+      body: "Email coaching is available on GotThis Pro and Elite plans.\n\nUpgrade at https://gotthis.one/account to unlock email coaching, along with 50 messages/day and 10 goals.\n\nYou can still track your goals via WhatsApp.",
       inReplyTo: gateMessageId,
       references: gateMessageId,
     });

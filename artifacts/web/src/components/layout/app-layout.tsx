@@ -294,7 +294,7 @@ function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
 function MobileNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <header className="flex md:hidden h-14 items-center justify-between px-4 border-b border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar">
-      <span className="text-base font-semibold tracking-tight" style={{ color: "#111827" }}>Paceify</span>
+      <span className="text-base font-semibold tracking-tight" style={{ color: "#111827" }}>GotThis</span>
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="md:hidden">

@@ -334,9 +334,9 @@ router.post("/admin/stripe/seed-products", requireAuth, requireAdmin, async (_re
     }
 
     const [freeProduct, proProduct, eliteProduct] = await Promise.all([
-      findOrCreateProduct("Paceify Free"),
-      findOrCreateProduct("Paceify Pro"),
-      findOrCreateProduct("Paceify Elite"),
+      findOrCreateProduct("GotThis Free"),
+      findOrCreateProduct("GotThis Pro"),
+      findOrCreateProduct("GotThis Elite"),
     ]);
 
     const [proMonthly, proYearly, eliteMonthly] = await Promise.all([

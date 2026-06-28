@@ -81,7 +81,7 @@ export default function SharePage({ token }: { token: string }) {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-1">
           <p className="text-xs uppercase tracking-widest text-muted-foreground font-medium">Progress shared via</p>
-          <h1 className="text-2xl font-serif font-bold tracking-tight">Paceify</h1>
+          <h1 className="text-2xl font-serif font-bold tracking-tight">GotThis</h1>
         </div>
 
         <Card className="border-border/40 shadow-sm">

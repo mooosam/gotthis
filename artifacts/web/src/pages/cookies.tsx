@@ -26,7 +26,7 @@ export default function CookiesPage() {
             {toc.map((t) => <a key={t.id} href={`#${t.id}`}>{t.label}</a>)}
           </aside>
           <div className="pub-legal-content">
-            <p>This Cookies Policy explains how Paceify Ltd. ("we", "us", "our") uses cookies and similar tracking technologies when you visit our website or use our service.</p>
+            <p>This Cookies Policy explains how GotThis Ltd. ("we", "us", "our") uses cookies and similar tracking technologies when you visit our website or use our service.</p>
 
             <h2 id="what">1. What Are Cookies</h2>
             <p>Cookies are small text files stored on your device when you visit a website. They allow the website to remember your preferences and understand how you interact with it. Similar technologies include local storage, session storage, and pixels.</p>
@@ -73,7 +73,7 @@ export default function CookiesPage() {
             <p>We may update this Cookies Policy as our technology or legal obligations change. Significant changes will be notified via the service or by email. The "last updated" date at the top of this page will always reflect the most recent version.</p>
 
             <h2 id="contact">6. Contact</h2>
-            <p>If you have questions about our use of cookies, please contact us at <a href="mailto:privacy@paceify.app">privacy@paceify.app</a> or via our <Link href="/contact">Contact page</Link>.</p>
+            <p>If you have questions about our use of cookies, please contact us at <a href="mailto:privacy@gotthis.one">privacy@gotthis.one</a> or via our <Link href="/contact">Contact page</Link>.</p>
           </div>
         </div>
       </div>
