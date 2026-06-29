@@ -127,7 +127,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [pauseReason, setPauseReason] = useState("");
 
-  const [roadmapSteps, setRoadmapSteps] = useState<Array<{ title: string; description?: string; orderIndex: number }>>([]);
+  const [roadmapSteps, setRoadmapSteps] = useState<Array<{ title: string; description?: string; order: number }>>([]);
   const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [roadmapCommitting, setRoadmapCommitting] = useState(false);
 
@@ -347,8 +347,8 @@ export default function GoalDetailPage({ id }: { id: string }) {
         body: JSON.stringify({ commit: false }),
       });
       const data = await r.json();
-      if (r.ok && Array.isArray(data.steps)) {
-        setRoadmapSteps(data.steps);
+      if (r.ok && Array.isArray(data.suggestions)) {
+        setRoadmapSteps(data.suggestions);
       } else {
         toast({ title: "Failed to generate roadmap", description: data.error, variant: "destructive" });
       }
@@ -1024,7 +1024,7 @@ export default function GoalDetailPage({ id }: { id: string }) {
                         >
                           <div className="font-medium leading-snug">
                             <span className="text-xs text-muted-foreground mr-1">
-                              Step {step.orderIndex ?? i + 1}.
+                              Step {step.order ?? i + 1}.
                             </span>
                             {step.title}
                           </div>
