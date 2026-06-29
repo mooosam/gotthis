@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useGetDashboardStats, useListGoals } from "@workspace/api-client-react";
 import { apiFetch } from "@/lib/api";
 import { Link } from "wouter";
@@ -32,6 +32,13 @@ export default function DashboardPage() {
     checkoutPath: string;
   } | null>(null);
   const loadedAt = useRef(new Date());
+  const [, setTick] = useState(0);
+
+  // Re-render every 30 s so "Updated · X ago" stays live
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleSend = useCallback(async () => {
     const content = message.trim();
@@ -67,6 +74,7 @@ export default function DashboardPage() {
       setGoalsUpdated(result.updatedGoals ?? (result.intent === "goal_update" ? 1 : 0));
       setMessage("");
       await Promise.all([refetchStats(), refetchGoals()]);
+      loadedAt.current = new Date();
     } catch {
       toast({ title: "Could not send update", description: "Try again in a moment.", variant: "destructive" });
     } finally {

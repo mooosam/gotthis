@@ -1102,17 +1102,15 @@ export default function GoalDetailPage({ id }: { id: string }) {
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-                {milestones.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {milestones.filter((m) => m.completed).length} of {milestones.length} completed
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  {milestones.length > 0
+                    ? `${milestones.filter((m) => m.completed).length} of ${milestones.length} completed`
+                    : "Generate with Claude (above) or add manually — check off each step as you go."}
+                </p>
               </CardHeader>
               <CardContent className="space-y-3">
                 {milestones.length === 0 && !showAddMilestone && (
-                  <p className="text-sm text-muted-foreground">
-                    No milestones yet. Break your goal into steps.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No milestones yet.</p>
                 )}
                 {milestones.map((m, i) => (
                   <div key={m.id} className="flex items-start gap-2 group">
