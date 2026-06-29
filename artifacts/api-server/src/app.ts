@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { rateLimit } from "express-rate-limit";
 import { clerkMiddleware } from "@clerk/express";
 import {
   CLERK_PROXY_PATH,
@@ -101,6 +102,18 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
   }
   next(err);
 });
+
+// Global rate limiter — 200 req/min per IP for all non-webhook routes.
+// AI endpoints layer their own tighter per-user throttles on top of this.
+// Webhook routes are registered before this middleware runs, so they're exempt.
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many requests, please slow down." },
+});
+app.use(globalLimiter);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
