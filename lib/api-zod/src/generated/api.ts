@@ -879,3 +879,49 @@ export const ResolveMagicLinkResponse = zod.object({
   targetDate: zod.string().nullish(),
   targetGoalId: zod.string().nullish(),
 });
+
+/**
+ * @summary Get current user billing status and tier features
+ */
+export const GetBillingStatusResponse = zod.object({
+  tier: zod.string(),
+  tierLabel: zod.string(),
+  stripeCustomerId: zod.string().nullish(),
+  subscriptionId: zod.string().nullish(),
+  pricesConfigured: zod.boolean(),
+  features: zod.object({
+    dailyMessageCap: zod.number(),
+    goalCountLimit: zod.number().nullish(),
+    monthlyTokenAllowance: zod.number(),
+    emailChannel: zod.boolean(),
+    proactiveNudges: zod.boolean(),
+  }),
+});
+
+/**
+ * @summary Create a Stripe Checkout session for upgrading tier
+ */
+export const CreateCheckoutSessionBody = zod.object({
+  tier: zod.enum(["pro", "elite"]),
+  period: zod.enum(["monthly", "yearly"]).optional(),
+});
+
+export const CreateCheckoutSessionResponse = zod.object({
+  url: zod.string(),
+});
+
+/**
+ * @summary Get Stripe Customer Portal URL for managing subscription
+ */
+export const GetBillingPortalUrlResponse = zod.object({
+  url: zod.string(),
+});
+
+/**
+ * @summary Stripe webhook receiver (signature-verified)
+ */
+export const StripeWebhookBody = zod.object({}).passthrough();
+
+export const StripeWebhookResponse = zod.object({
+  received: zod.boolean(),
+});

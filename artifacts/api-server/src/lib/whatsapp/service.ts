@@ -110,7 +110,7 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
   if (!budgetCheck.allowed) {
     const base = getBaseUrl();
     const upgradeHint = budgetCheck.upgradePrompt
-      ? `\n\nUpgrade your plan at: ${base}/account`
+      ? `\n\n👉 Upgrade now: ${base}/pricing`
       : "";
     await sendTracked(jid, (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint);
     return;

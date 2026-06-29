@@ -22,6 +22,8 @@ tags:
     description: Dashboard stats operations
   - name: magic-links
     description: Magic link operations
+  - name: billing
+    description: Subscription billing and Stripe integration
   - name: admin
     description: Admin-only operations (user & plan management, system stats)
 paths:
@@ -963,6 +965,117 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /billing/status:
+    get:
+      operationId: getBillingStatus
+      tags: [billing]
+      summary: Get current user billing status and tier features
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Billing status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/checkout:
+    post:
+      operationId: createCheckoutSession
+      tags: [billing]
+      summary: Create a Stripe Checkout session for upgrading tier
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutRequest"
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/portal:
+    get:
+      operationId: getBillingPortalUrl
+      tags: [billing]
+      summary: Get Stripe Customer Portal URL for managing subscription
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Portal URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No Stripe customer found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [billing]
+      summary: Stripe webhook receiver (signature-verified)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Webhook received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                required:
+                  - received
+        "400":
+          description: Invalid signature or payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -980,6 +1093,71 @@ components:
           type: string
       required:
         - error
+
+    BillingStatus:
+      type: object
+      properties:
+        tier:
+          type: string
+        tierLabel:
+          type: string
+        stripeCustomerId:
+          type: ["string", "null"]
+        subscriptionId:
+          type: ["string", "null"]
+        pricesConfigured:
+          type: boolean
+        features:
+          type: object
+          properties:
+            dailyMessageCap:
+              type: integer
+            goalCountLimit:
+              type: ["integer", "null"]
+            monthlyTokenAllowance:
+              type: integer
+            emailChannel:
+              type: boolean
+            proactiveNudges:
+              type: boolean
+          required:
+            - dailyMessageCap
+            - monthlyTokenAllowance
+            - emailChannel
+            - proactiveNudges
+      required:
+        - tier
+        - tierLabel
+        - pricesConfigured
+        - features
+
+    CheckoutRequest:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [pro, elite]
+        period:
+          type: string
+          enum: [monthly, yearly]
+      required:
+        - tier
+
+    CheckoutResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
+
+    PortalResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
 
     User:
       type: object

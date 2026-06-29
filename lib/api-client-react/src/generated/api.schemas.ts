@@ -13,6 +13,55 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type BillingStatusFeatures = {
+  dailyMessageCap: number;
+  /** @nullable */
+  goalCountLimit?: number | null;
+  monthlyTokenAllowance: number;
+  emailChannel: boolean;
+  proactiveNudges: boolean;
+};
+
+export interface BillingStatus {
+  tier: string;
+  tierLabel: string;
+  /** @nullable */
+  stripeCustomerId?: string | null;
+  /** @nullable */
+  subscriptionId?: string | null;
+  pricesConfigured: boolean;
+  features: BillingStatusFeatures;
+}
+
+export type CheckoutRequestTier =
+  (typeof CheckoutRequestTier)[keyof typeof CheckoutRequestTier];
+
+export const CheckoutRequestTier = {
+  pro: "pro",
+  elite: "elite",
+} as const;
+
+export type CheckoutRequestPeriod =
+  (typeof CheckoutRequestPeriod)[keyof typeof CheckoutRequestPeriod];
+
+export const CheckoutRequestPeriod = {
+  monthly: "monthly",
+  yearly: "yearly",
+} as const;
+
+export interface CheckoutRequest {
+  tier: CheckoutRequestTier;
+  period?: CheckoutRequestPeriod;
+}
+
+export interface CheckoutResponse {
+  url: string;
+}
+
+export interface PortalResponse {
+  url: string;
+}
+
 export interface User {
   /** Clerk user ID (primary identity key) */
   id: string;
@@ -417,4 +466,10 @@ export type AdminListUsersParams = {
   tier?: string;
   limit?: number;
   offset?: number;
+};
+
+export type StripeWebhookBody = { [key: string]: unknown };
+
+export type StripeWebhook200 = {
+  received: boolean;
 };

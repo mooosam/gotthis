@@ -1,0 +1,23 @@
+Here's the consolidated list, prioritized so you know what to tackle first.
+🔴 Critical — breaks trust in the core mechanic
+
+Sidebar "Not connected" badge is wrong everywhere. Shows on every page even when WhatsApp page itself confirms "Connected." Fix the status check/binding first — this contradicts your entire pitch.
+Two tracking models bolted onto one goal. Habit goals (yes/no, streaks, heatmap) and Outcome goals (% slider, milestones) are different things but every goal currently shows both UIs. This is why streak = 0% completion = 0 even when progress = 30%/15%. Separate the goal types properly:
+
+Habit → check-in, streak, heatmap. No % slider.
+Outcome/Project → % slider, milestones. No streak/heatmap.
+
+
+Completion Rate / Current Streak math doesn't reflect real activity. 1 total log should never produce 0% completion. Audit the calculation logic regardless of the type-separation fix above.
+Empty charts. Weekly Activity (Dashboard) and Messages-last-7-days (Admin) render with no data/bars even when logs exist. Confirm the chart components are actually receiving data.
+Stale due date. "Health" goal shows a deadline (May 30) that's already passed relative to today's date — check date logic isn't silently allowing expired deadlines without flagging them.
+
+🟡 High priority — confusing or sloppy, but not broken
+
+No limit/guidance on Title field. Users can (and did) paste a full sentence as the title, which then displays truncated mid-word on cards and becomes the permanent page header, typo and all. Add a character limit + counter, or auto-generate a clean title via Claude (you already call Claude for the roadmap feature — same pattern would work here).
+"Goal type" vs. "Tracking cadence" dropdowns overlap. Both currently say roughly "habit, builds streaks." Either merge them or make the distinction explicit in the copy.
+Inconsistent card/page layouts for the same data. Goals page uses vertical cards; Review page shows the same goals as horizontal bars with tags in a different position. Pick one pattern.
+Header pills all look identical. Category / Status / Cadence / Type pills (e.g. "Creative · Active · Daily · ⇄Habit") have no visual hierarchy — color-code or icon-differentiate by pill type so it's scannable.
+Success Criteria field is captured but never shown. Add it to the goal detail page (near Progress Tracking) so the thing the user wrote at creation actually surfaces later.
+Layout collision on Review page — checkbox icon overlaps "Daily Review" header text.
+Date format inconsistency — "Monday, June 29" vs. "Monday, June 29, 2026" across pages.
