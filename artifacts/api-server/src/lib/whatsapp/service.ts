@@ -259,8 +259,11 @@ async function connect(phoneForPairing?: string): Promise<void> {
 
       const msgId = msg.key.id ?? "";
 
-      // Skip messages the bot sent (avoid echoing our own replies)
-      if (msg.key.fromMe && botSentIds.has(msgId)) {
+      // Only process messages sent TO this number, never FROM it.
+      // fromMe=true covers both the bot's own replies and any message the
+      // account owner sends from their phone to someone else — both must be
+      // ignored so we don't reply in unrelated chats.
+      if (msg.key.fromMe) {
         botSentIds.delete(msgId);
         continue;
       }
@@ -268,16 +271,7 @@ async function connect(phoneForPairing?: string): Promise<void> {
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
 
-      // When WhatsApp uses LID-based routing (newer clients), self-messages
-      // arrive with a LID JID (e.g. 225219595743478@lid) instead of the
-      // phone-based JID. For fromMe=true messages we use connectedPhone
-      // directly so the lookup still works.
-      let phone: string;
-      if (jid.endsWith("@lid") && msg.key.fromMe && connectedPhone) {
-        phone = connectedPhone;
-      } else {
-        phone = jidToPhone(jid);
-      }
+      const phone = jidToPhone(jid);
 
       const text =
         msg.message.conversation ??
