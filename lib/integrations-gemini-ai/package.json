@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.0.0"
+    "@google/genai": "^2.15.0"
   },
   "devDependencies": {
     "@types/node": "catalog:"

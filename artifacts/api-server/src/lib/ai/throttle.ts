@@ -1,7 +1,7 @@
 // Per-minute per-user burst throttle for AI message processing.
 //
 // This sits in front of the classifier so a scripted attacker spamming our
-// /ai/message endpoint or WhatsApp number cannot rack up Anthropic costs even
+// /ai/message endpoint or WhatsApp number cannot rack up AI costs even
 // before the daily-cap or token-budget checks kick in. Process-local in-memory
 // state is sufficient because the API server runs as a single instance.
 
