@@ -64,7 +64,7 @@ nano .env
 | `CLERK_PUBLISHABLE_KEY` | [Clerk Dashboard](https://dashboard.clerk.com) → your app → API Keys |
 | `CLERK_SECRET_KEY` | Same as above |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Same as `CLERK_PUBLISHABLE_KEY` |
-| `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com) → API Keys |
+| `GEMINI_API_KEY | [Google AI Studio](https://aistudio.google.com/app/apikey) → Get API Key |
 | `SESSION_SECRET` | Any random 32+ character string |
 | `PHONE_PEPPER` | Any random 32+ character string |
 | `APP_URL` | `https://yourdomain.com` |

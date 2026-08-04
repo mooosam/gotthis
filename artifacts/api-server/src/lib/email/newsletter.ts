@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { generate, GEMINI_FLASH } from "@workspace/integrations-gemini-ai";
 import {
   db,
   usersTable,
@@ -107,15 +107,13 @@ ${logsBlock}
 
 Write the progress narrative now. End with one specific, actionable next step for the coming week.`;
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
+  const { text } = await generate({
+    model: GEMINI_FLASH,
+    userContent: prompt,
+    maxOutputTokens: 1024,
   });
 
-  return response.content[0]?.type === "text"
-    ? response.content[0].text
-    : "Your progress summary is not available this week.";
+  return text || "Your progress summary is not available this week.";
 }
 
 function buildPeriodLabel(cadence: string, timezone: string): string {
@@ -200,7 +198,6 @@ export function startNewsletterCron(): void {
       for (const user of users) {
         if (!isSendTimeForCadence(user.newsletterCadence, user.timezone)) continue;
 
-        // Email newsletters are a proactive nudge — require Pro or Elite.
         const tierCfg = getTierConfig(user.tier);
         if (!tierCfg.emailChannel) {
           logger.debug({ userId: user.id, tier: user.tier }, "Skipping newsletter — tier does not include email channel");

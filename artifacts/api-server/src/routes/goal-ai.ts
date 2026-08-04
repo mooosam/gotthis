@@ -3,7 +3,7 @@ import { eq, and, asc, gte } from "drizzle-orm";
 import { db, goalsTable, milestonesTable, dailyLogsTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { GenerateRoadmapBody } from "@workspace/api-zod";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { generate, GEMINI_FLASH } from "@workspace/integrations-gemini-ai";
 import { nanoid } from "nanoid";
 import { logger } from "../lib/logger.js";
 import { checkPerMinuteThrottle } from "../lib/ai/throttle.js";
@@ -21,7 +21,7 @@ router.post("/goals/:id/roadmap", requireAuth, async (req, res): Promise<void> =
   const userId = (req as typeof req & { userId: string }).userId;
   const id = req.params["id"] as string;
 
-  // Per-minute throttle so this Sonnet-backed endpoint can't be hammered.
+  // Per-minute throttle so this endpoint can't be hammered.
   const throttle = checkPerMinuteThrottle(userId);
   if (!throttle.allowed) {
     res.status(429).json({
@@ -47,8 +47,6 @@ router.post("/goals/:id/roadmap", requireAuth, async (req, res): Promise<void> =
     return;
   }
 
-  // Token-budget gate — the same one /ai/message uses — so heavy AI features
-  // share one allowance and can't outpace the user's plan.
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -60,9 +58,7 @@ router.post("/goals/:id/roadmap", requireAuth, async (req, res): Promise<void> =
     return;
   }
 
-  // Defensive caps: the user controls these fields, so clamp them before
-  // injecting into a Claude prompt so a 100k-character goal description cannot
-  // be used to inflate token usage or smuggle injection payloads.
+  // Defensive caps: clamp user-controlled fields before injecting into a prompt.
   const safeTitle = goal.title.slice(0, 200);
   const safeDescription = goal.description ? goal.description.slice(0, 500) : "";
   const safeCriteria = goal.successCriteria ? goal.successCriteria.slice(0, 500) : "";
@@ -90,14 +86,13 @@ ${goal.targetValue ? `target: ${goal.targetValue} ${safeUnit}` : ""}
 ${goal.deadline ? `deadline: ${goal.deadline}` : ""}
 </goal>`;
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
+  const { text: raw, inputTokens, outputTokens } = await generate({
+    model: GEMINI_FLASH,
+    systemInstruction: systemPrompt,
+    userContent: userMessage,
+    maxOutputTokens: 2048,
   });
 
-  const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
   let suggestions: RoadmapStep[] = [];
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
@@ -118,14 +113,7 @@ ${goal.deadline ? `deadline: ${goal.deadline}` : ""}
     logger.warn({ err, raw: raw.slice(0, 200) }, "Failed to parse roadmap JSON");
   }
 
-  // Persist token usage from the roadmap call against the user's budget so
-  // it's accounted for in subsequent requests.
-  await recordUsage(
-    userId,
-    response.usage.input_tokens,
-    response.usage.output_tokens,
-    0,
-  );
+  await recordUsage(userId, inputTokens, outputTokens, 0);
 
   if (suggestions.length === 0) {
     res.status(502).json({ error: "AI did not return usable suggestions; please retry" });
@@ -133,8 +121,6 @@ ${goal.deadline ? `deadline: ${goal.deadline}` : ""}
   }
 
   if (commit) {
-    // Atomic: read existing max order and insert all suggestions in one tx so a
-    // partial failure cannot leave the user with half a roadmap.
     await db.transaction(async (tx) => {
       const existing = await tx
         .select({ order: milestonesTable.order })
@@ -162,8 +148,6 @@ router.get("/goals/:id/forecast", requireAuth, async (req, res): Promise<void> =
   const userId = (req as typeof req & { userId: string }).userId;
   const id = req.params["id"] as string;
 
-  // Forecast is just SQL + math (no Claude call) but still gated by the
-  // per-minute throttle so abusers can't use it to amplify DB load either.
   const throttle = checkPerMinuteThrottle(userId);
   if (!throttle.allowed) {
     res.status(429).json({
@@ -215,12 +199,10 @@ router.get("/goals/:id/forecast", requireAuth, async (req, res): Promise<void> =
     return;
   }
 
-  // Use last 30 days of daily-log progressDelta for this goal as velocity samples.
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const cutoff = thirtyDaysAgo.toISOString().split("T")[0];
 
-  // Push the date filter to SQL so we don't load every log the user has ever made.
   const logs = await db
     .select({ data: dailyLogsTable.data })
     .from(dailyLogsTable)
@@ -264,10 +246,9 @@ router.get("/goals/:id/forecast", requireAuth, async (req, res): Promise<void> =
   finish.setDate(finish.getDate() + daysToFinish);
   const predictedFinishDate = finish.toISOString().split("T")[0];
 
-  // Confidence: more samples + lower variance = higher confidence.
   const variance =
     recentDeltas.reduce((a, b) => a + (b - avgDelta) ** 2, 0) / recentDeltas.length;
-  const cv = Math.sqrt(variance) / avgDelta; // coefficient of variation
+  const cv = Math.sqrt(variance) / avgDelta;
   let confidence: "low" | "medium" | "high" = "low";
   if (recentDeltas.length >= 14 && cv < 0.4) confidence = "high";
   else if (recentDeltas.length >= 7 && cv < 0.7) confidence = "medium";

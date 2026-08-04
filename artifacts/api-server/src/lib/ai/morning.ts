@@ -1,5 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { generate, GEMINI_FLASH } from "@workspace/integrations-gemini-ai";
 import { db, magicLinksTable, dailyLogsTable, usersTable } from "@workspace/db";
 import { eq, and, gte } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -9,7 +8,7 @@ import {
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
-import { loadFreshBudget, getCacheHitTokens } from "./usage.js";
+import { loadFreshBudget } from "./usage.js";
 import { getActiveMilestone, getDateInTimezone } from "./streaks.js";
 
 export interface MorningRitualResult {
@@ -45,7 +44,6 @@ function getYesterdayDate(): string {
   return d.toISOString().split("T")[0];
 }
 
-// Returns weekday number (0=Sun, 1=Mon, ...) in the given timezone.
 function getWeekdayInTimezone(timezone: string): number {
   try {
     const fmt = new Intl.DateTimeFormat("en-US", {
@@ -59,10 +57,6 @@ function getWeekdayInTimezone(timezone: string): number {
   }
 }
 
-// Timezone-robust dedupe: insight emitted within the last 6 days counts as
-// "this week's" insight regardless of how UTC vs. user-local week boundaries
-// fall. Avoids both double-firing across a TZ-skewed Monday and skipping users
-// in negative offsets where UTC has already advanced to Tuesday.
 const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
 function emittedRecently(when: Date | null, now: Date): boolean {
   if (!when) return false;
@@ -78,7 +72,6 @@ async function buildWeeklyInsight(ctx: UserContext): Promise<WeeklyInsight | nul
   const isMonday = getWeekdayInTimezone(ctx.user.timezone) === 1;
   if (!isMonday) return null;
 
-  // Dedupe: don't re-emit if we already pushed an insight in the last 6 days.
   if (emittedRecently(ctx.user.lastWeeklyInsightAt, new Date())) return null;
 
   const sevenDaysAgo = new Date();
@@ -193,7 +186,6 @@ export async function runMorningRitual(
   );
   const milestoneLines = activeMilestones.filter(Boolean).join("\n");
 
-  // Monday weekly insight (deduped within the same UTC week).
   const weeklyInsight = await buildWeeklyInsight(ctx);
   const weeklyInsightSection = weeklyInsight ? weeklyInsight.block : "";
   const sentenceCount = weeklyInsight ? "exactly 4-5 sentences" : "exactly 3-4 sentences";
@@ -222,44 +214,14 @@ ${reflectionInstruction}${weeklyInsight ? "6" : "4"}. End with this exact line: 
 
 Plain text only. No emojis. No markdown. Keep it under ${weeklyInsight ? "120" : "90"} words before the link line.`;
 
-  const messages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: staticContextBlock,
-          cache_control: { type: "ephemeral" },
-        } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-        {
-          type: "text",
-          text: recentLogsBlock,
-        },
-        {
-          type: "text",
-          text: prompt,
-        },
-      ],
-    },
-  ];
+  const userContent = [staticContextBlock, recentLogsBlock, prompt].join("\n\n");
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    system: [
-      {
-        type: "text",
-        text: systemPrompt,
-        cache_control: { type: "ephemeral" },
-      } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-    ],
-    messages,
+  const { text: responseText, inputTokens, outputTokens } = await generate({
+    model: GEMINI_FLASH,
+    systemInstruction: systemPrompt,
+    userContent,
   });
 
-  const responseText =
-    response.content[0]?.type === "text" ? response.content[0].text : "";
-
-  // Stamp lastWeeklyInsightAt so we don't re-emit the insight in the same UTC week.
   if (weeklyInsight?.shouldStamp) {
     await db
       .update(usersTable)
@@ -269,8 +231,8 @@ Plain text only. No emojis. No markdown. Keep it under ${weeklyInsight ? "120" :
 
   return {
     response: responseText,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cacheHitTokens: getCacheHitTokens(response.usage),
+    inputTokens,
+    outputTokens,
+    cacheHitTokens: 0,
   };
 }

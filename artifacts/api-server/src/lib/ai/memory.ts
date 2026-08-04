@@ -1,4 +1,4 @@
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { generate, GEMINI_FAST } from "@workspace/integrations-gemini-ai";
 import { db, dailyLogsTable, memorySummariesTable, goalsTable, usersTable } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -86,21 +86,20 @@ Respond with ONLY a JSON object in this exact shape (no markdown, no explanation
   "lastUpdated": "${new Date().toISOString().split("T")[0]}"
 }`;
 
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
+  const { text: rawText, inputTokens, outputTokens } = await generate({
+    model: GEMINI_FAST,
+    userContent: prompt,
   });
 
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
-
-  const rawText =
-    response.content[0]?.type === "text" ? response.content[0].text.trim() : "{}";
+  const raw = rawText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
 
   let summary: MemorySummaryShape;
   try {
-    summary = JSON.parse(rawText) as MemorySummaryShape;
+    summary = JSON.parse(raw) as MemorySummaryShape;
   } catch {
     summary = {
       personality: "Insufficient data to summarize.",

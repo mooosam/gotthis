@@ -5,23 +5,10 @@ import type { User } from "@workspace/db";
 import { logger } from "../logger.js";
 
 /**
- * Typed helper for accessing cache_read_input_tokens from Anthropic usage objects.
- * The SDK's Usage type does not yet declare this field, but Anthropic returns it at runtime.
+ * Cache-hit tokens are an Anthropic-specific concept. With Gemini, this is always 0.
+ * Kept for interface compatibility with the usage_tracking schema.
  */
-let warnedMissingCacheField = false;
-export function getCacheHitTokens(usage: object): number {
-  const v = (usage as Record<string, unknown>)["cache_read_input_tokens"];
-  if (typeof v === "number") return v;
-  // The Anthropic SDK omits this field from its public types but returns it
-  // at runtime. If a future SDK version renames or removes the field, log
-  // once so the silent loss of cache-hit accounting becomes visible.
-  if (v === undefined && !warnedMissingCacheField) {
-    warnedMissingCacheField = true;
-    logger.warn(
-      { usageKeys: Object.keys(usage) },
-      "Anthropic usage object missing cache_read_input_tokens — cache savings may not be tracked",
-    );
-  }
+export function getCacheHitTokens(_usage?: object): number {
   return 0;
 }
 

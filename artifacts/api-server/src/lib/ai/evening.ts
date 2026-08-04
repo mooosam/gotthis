@@ -1,5 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { generate, GEMINI_FLASH } from "@workspace/integrations-gemini-ai";
 import { db, dailyLogsTable, goalsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -9,7 +8,7 @@ import {
   buildRecentLogsBlock,
   type UserContext,
 } from "./context.js";
-import { getTodayDate, loadFreshBudget, checkBudgetForUser, getCacheHitTokens } from "./usage.js";
+import { getTodayDate, loadFreshBudget, checkBudgetForUser } from "./usage.js";
 import { refreshMemorySummary } from "./memory.js";
 import { updateStreakForGoal, STREAK_MILESTONES, buildShareUrl } from "./streaks.js";
 
@@ -93,50 +92,13 @@ Extract structured completion data from the user's message. Respond with ONLY a 
 
 If the user did not mention a goal, omit it from goalUpdates. Set percentProgress based on what they described — do not change it if they gave no indication.`;
 
-  const extractionMessages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: staticContextBlock,
-          cache_control: { type: "ephemeral" },
-        } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-        {
-          type: "text",
-          text: recentLogsBlock,
-        },
-        {
-          type: "text",
-          text: extractionPrompt,
-        },
-      ],
-    },
-  ];
+  const extractionUserContent = [staticContextBlock, recentLogsBlock, extractionPrompt].join("\n\n");
 
-  const systemBlocks: Anthropic.TextBlockParam[] = [
-    {
-      type: "text",
-      text: systemPrompt,
-      cache_control: { type: "ephemeral" },
-    } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-  ];
-
-  const extractionResponse = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    system: systemBlocks,
-    messages: extractionMessages,
+  const { text: extractedText, inputTokens: extractionInputTokens, outputTokens: extractionOutputTokens } = await generate({
+    model: GEMINI_FLASH,
+    systemInstruction: systemPrompt,
+    userContent: extractionUserContent,
   });
-
-  const extractionInputTokens = extractionResponse.usage.input_tokens;
-  const extractionOutputTokens = extractionResponse.usage.output_tokens;
-  const extractionCacheHitTokens = getCacheHitTokens(extractionResponse.usage);
-
-  const extractedText =
-    extractionResponse.content[0]?.type === "text"
-      ? extractionResponse.content[0].text.trim()
-      : "{}";
 
   let extractedData: {
     goalUpdates?: GoalCompletion[];
@@ -147,7 +109,12 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
   } = {};
 
   try {
-    extractedData = JSON.parse(extractedText);
+    const raw = extractedText
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim();
+    extractedData = JSON.parse(raw);
   } catch {
     extractedData = {};
   }
@@ -231,10 +198,6 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
     }
   }
 
-  // Load a fresh budget snapshot, then adjust for extraction tokens that have been
-  // used but not yet persisted (they will be recorded in a single recordUsage call
-  // by processor.ts after this handler returns). This ensures the coaching call is
-  // only allowed if the user still has headroom after the extraction call.
   const { user: freshUser } = await loadFreshBudget(ctx.user.id);
   const extractionTokensUsed = extractionInputTokens + extractionOutputTokens;
   const adjustedUser = {
@@ -248,7 +211,7 @@ If the user did not mention a goal, omit it from goalUpdates. Set percentProgres
       response: "Daily log saved. " + (budget2.reason ?? "Token limit reached."),
       inputTokens: extractionInputTokens,
       outputTokens: extractionOutputTokens,
-      cacheHitTokens: extractionCacheHitTokens,
+      cacheHitTokens: 0,
     };
   }
 
@@ -272,42 +235,17 @@ Write a coaching response (2-4 sentences) that:
 
 Plain text only. No emojis. No markdown.`;
 
-  const coachingMessages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: staticContextBlock,
-          cache_control: { type: "ephemeral" },
-        } as Anthropic.TextBlockParam & { cache_control: { type: "ephemeral" } },
-        {
-          type: "text",
-          text: coachingPrompt,
-        },
-      ],
-    },
-  ];
+  const coachingUserContent = [staticContextBlock, coachingPrompt].join("\n\n");
 
-  const coachingResponse = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    system: systemBlocks,
-    messages: coachingMessages,
+  const { text: baseCoachingText, inputTokens: coachingInputTokens, outputTokens: coachingOutputTokens } = await generate({
+    model: GEMINI_FLASH,
+    systemInstruction: systemPrompt,
+    userContent: coachingUserContent,
   });
-
-  const baseCoachingText =
-    coachingResponse.content[0]?.type === "text"
-      ? coachingResponse.content[0].text
-      : "";
 
   const coachingText = streakMilestoneMessages.length > 0
     ? baseCoachingText + streakMilestoneMessages.join("")
     : baseCoachingText;
-
-  const coachingInputTokens = coachingResponse.usage.input_tokens;
-  const coachingOutputTokens = coachingResponse.usage.output_tokens;
-  const coachingCacheHitTokens = getCacheHitTokens(coachingResponse.usage);
 
   let memoryInputTokens = 0;
   let memoryOutputTokens = 0;
@@ -316,13 +254,13 @@ Plain text only. No emojis. No markdown.`;
     memoryInputTokens = memoryResult.inputTokens;
     memoryOutputTokens = memoryResult.outputTokens;
   } catch {
-    // Non-fatal: memory refresh failure should not break the response
+    // Non-fatal
   }
 
   return {
     response: coachingText,
     inputTokens: extractionInputTokens + coachingInputTokens + memoryInputTokens,
     outputTokens: extractionOutputTokens + coachingOutputTokens + memoryOutputTokens,
-    cacheHitTokens: extractionCacheHitTokens + coachingCacheHitTokens,
+    cacheHitTokens: 0,
   };
 }
