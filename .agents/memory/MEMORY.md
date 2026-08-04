@@ -1,0 +1,4 @@
+- [AI provider swap — Gemini](gemini-migration.md) — all Claude/Anthropic calls replaced with @google/genai via lib/integrations-gemini-ai; GEMINI_API_KEY secret required.
+- [MySQL migration](mysql-migration.md) — DB swapped from PostgreSQL to MySQL for Oracle Cloud self-hosting; use onDuplicateKeyUpdate not onConflictDoUpdate; like not ilike.
+- [WhatsApp bot fromMe fix](whatsapp-frommemfix.md) — skip ALL fromMe:true messages unconditionally to prevent bot replying to messages sent by the account owner.
+- [esbuild externals](esbuild-externals.md) — mysql2 must NOT be in the external list in build.mjs or it fails at runtime; drizzle-orm must be a direct dep of api-server to be resolvable.
