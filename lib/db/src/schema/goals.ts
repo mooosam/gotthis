@@ -1,21 +1,21 @@
 import {
-  pgTable,
+  mysqlTable,
   text,
-  integer,
+  int,
   boolean,
   timestamp,
-  type AnyPgColumn,
-} from "drizzle-orm/pg-core";
+  type AnyMySqlColumn,
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const goalsTable = pgTable("goals", {
+export const goalsTable = mysqlTable("goals", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
-  parentGoalId: text("parent_goal_id").references((): AnyPgColumn => goalsTable.id, {
+  parentGoalId: text("parent_goal_id").references((): AnyMySqlColumn => goalsTable.id, {
     onDelete: "set null",
   }),
   title: text("title").notNull(),
@@ -25,22 +25,22 @@ export const goalsTable = pgTable("goals", {
   status: text("status").notNull().default("active"),
   cadence: text("cadence").notNull().default("daily"),
   goalType: text("goal_type").notNull().default("habit"),
-  targetValue: integer("target_value"),
+  targetValue: int("target_value"),
   targetUnit: text("target_unit"),
-  currentValue: integer("current_value").notNull().default(0),
-  progress: integer("progress").notNull().default(0),
+  currentValue: int("current_value").notNull().default(0),
+  progress: int("progress").notNull().default(0),
   successCriteria: text("success_criteria"),
-  currentStreak: integer("current_streak").notNull().default(0),
-  longestStreak: integer("longest_streak").notNull().default(0),
+  currentStreak: int("current_streak").notNull().default(0),
+  longestStreak: int("longest_streak").notNull().default(0),
   lastStreakDate: text("last_streak_date"),
   graceUsed: boolean("grace_used").notNull().default(false),
   shareToken: text("share_token"),
   lastProgressResetDate: text("last_progress_reset_date"),
-  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
-  pausedAt: timestamp("paused_at", { withTimezone: true }),
+  lastCheckedAt: timestamp("last_checked_at"),
+  pausedAt: timestamp("paused_at"),
   pauseReason: text("pause_reason"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertGoalSchema = createInsertSchema(goalsTable).omit({

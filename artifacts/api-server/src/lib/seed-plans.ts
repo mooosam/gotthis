@@ -2,7 +2,6 @@
 // inserts the three baseline tiers if they don't already exist so the admin
 // dashboard always has data to manage out of the box.
 
-import { sql } from "drizzle-orm";
 import { db, plansTable } from "@workspace/db";
 import { logger } from "./logger.js";
 
@@ -47,16 +46,15 @@ export async function seedDefaultPlans(): Promise<void> {
     await db
       .insert(plansTable)
       .values(DEFAULT_PLANS)
-      .onConflictDoUpdate({
-        target: plansTable.slug,
+      .onDuplicateKeyUpdate({
         set: {
-          name: sql`excluded.name`,
-          description: sql`excluded.description`,
-          dailyMessageCap: sql`excluded.daily_message_cap`,
-          monthlyTokenAllowance: sql`excluded.monthly_token_allowance`,
-          monthlySkipCredits: sql`excluded.monthly_skip_credits`,
-          priceCents: sql`excluded.price_cents`,
-          sortOrder: sql`excluded.sort_order`,
+          name: plansTable.name,
+          description: plansTable.description,
+          dailyMessageCap: plansTable.dailyMessageCap,
+          monthlyTokenAllowance: plansTable.monthlyTokenAllowance,
+          monthlySkipCredits: plansTable.monthlySkipCredits,
+          priceCents: plansTable.priceCents,
+          sortOrder: plansTable.sortOrder,
         },
       });
     logger.info("Default plans seeded/updated");

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, asc, ilike, or, sql, count, gte } from "drizzle-orm";
+import { eq, and, desc, asc, like, or, sql, count, gte } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -148,8 +148,8 @@ router.get("/admin/users", async (req, res): Promise<void> => {
   if (search.length > 0) {
     const pattern = `%${search}%`;
     const orFilter = or(
-      ilike(usersTable.email, pattern),
-      ilike(usersTable.id, pattern),
+      like(usersTable.email, pattern),
+      like(usersTable.id, pattern),
     );
     if (orFilter) filters.push(orFilter as ReturnType<typeof eq>);
   }

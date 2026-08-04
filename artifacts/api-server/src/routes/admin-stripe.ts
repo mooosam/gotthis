@@ -40,7 +40,7 @@ router.post("/admin/stripe/key", async (req, res): Promise<void> => {
     await db
       .insert(appSettingsTable)
       .values({ key: "stripe_secret_key", value: trimmed })
-      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date() } });
+      .onDuplicateKeyUpdate({ set: { value: trimmed, updatedAt: new Date() } });
     const preview = `${trimmed.slice(0, 7)}…${trimmed.slice(-4)}`;
     res.json({ stored: true, preview });
   } catch (err) {
@@ -91,7 +91,7 @@ router.post("/admin/stripe/webhook-secret", async (req, res): Promise<void> => {
     await db
       .insert(appSettingsTable)
       .values({ key: "stripe_billing_webhook_secret", value: trimmed })
-      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date() } });
+      .onDuplicateKeyUpdate({ set: { value: trimmed, updatedAt: new Date() } });
     const preview = `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
     res.json({ stored: true, preview });
   } catch (err) {
@@ -113,13 +113,14 @@ router.delete("/admin/stripe/webhook-secret", async (_req, res) => {
 async function queryStripe<T = Record<string, unknown>>(query: ReturnType<typeof sql>): Promise<T[]> {
   try {
     const result = await db.execute(query);
-    return result.rows as T[];
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('schema')) {
-      return [];
-    }
-    throw err;
+    // MySQL2: result is the rows array directly; PostgreSQL: result.rows
+    const r = result as unknown;
+    if (r && typeof r === "object" && "rows" in r) return (r as { rows: T[] }).rows;
+    if (Array.isArray(r)) return (Array.isArray(r[0]) ? r[0] : r) as T[];
+    return [];
+  } catch {
+    // Stripe sync schema (stripe.*) is PostgreSQL-only and won't exist on MySQL.
+    return [];
   }
 }
 
@@ -244,14 +245,14 @@ router.get("/admin/stripe/customers", async (req, res) => {
       FROM stripe.customers c
       LEFT JOIN stripe.subscriptions    s  ON s.customer = c.id
       LEFT JOIN stripe.payment_intents  pi ON pi.customer = c.id
-      ${search ? sql`WHERE c.email ILIKE ${'%' + search + '%'} OR c.name ILIKE ${'%' + search + '%'}` : sql``}
+      ${search ? sql`WHERE c.email LIKE ${'%' + search + '%'} OR c.name LIKE ${'%' + search + '%'}` : sql``}
       GROUP BY c.id, c.email, c.name, c.created, c.currency
       ORDER BY c.created DESC
       LIMIT ${limit} OFFSET ${offset}
     `);
     const [countRow] = await queryStripe<{ total: number }>(
       search
-        ? sql`SELECT COUNT(*) AS total FROM stripe.customers WHERE email ILIKE ${'%' + search + '%'} OR name ILIKE ${'%' + search + '%'}`
+        ? sql`SELECT COUNT(*) AS total FROM stripe.customers WHERE email LIKE ${'%' + search + '%'} OR name LIKE ${'%' + search + '%'}`
         : sql`SELECT COUNT(*) AS total FROM stripe.customers`
     );
     res.json({ data: rows, total: Number(countRow?.total ?? 0) });

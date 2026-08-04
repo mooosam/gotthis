@@ -1,21 +1,21 @@
 import {
-  pgTable,
+  mysqlTable,
   text,
-  jsonb,
+  json,
   timestamp,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const memorySummariesTable = pgTable("memory_summaries", {
+export const memorySummariesTable = mysqlTable("memory_summaries", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
     .unique()
     .references(() => usersTable.id, { onDelete: "cascade" }),
-  summary: jsonb("summary"),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  summary: json("summary"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertMemorySummarySchema = createInsertSchema(memorySummariesTable).omit({

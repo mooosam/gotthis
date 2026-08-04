@@ -1,0 +1,66 @@
+services:
+  # ── MySQL database ────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword        # change this
+      MYSQL_DATABASE: ritual_ai
+      MYSQL_USER: ritual
+      MYSQL_PASSWORD: yourpassword             # change this (match DATABASE_URL)
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── API server ────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: artifacts/api-server/Dockerfile
+    restart: unless-stopped
+    env_file: .env                             # copy .env.example → .env and fill in
+    environment:
+      PORT: "8080"
+      NODE_ENV: production
+      # Overrides DATABASE_URL from .env to use the internal Docker hostname
+      DATABASE_URL: mysql://ritual:yourpassword@mysql:3306/ritual_ai
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      # WhatsApp auth state must survive container restarts
+      - whatsapp_auth:/app/.whatsapp-auth
+
+  # ── Web frontend (static build served by nginx) ───────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: artifacts/web/Dockerfile
+      args:
+        # Must match CLERK_PUBLISHABLE_KEY in your .env — baked in at build time
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+    restart: unless-stopped
+
+  # ── Reverse proxy (routes / → web, /api → api) ───────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Uncomment and populate for TLS certificates (e.g. from Let's Encrypt)
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api
+      - web
+
+volumes:
+  mysql_data:
+  whatsapp_auth:

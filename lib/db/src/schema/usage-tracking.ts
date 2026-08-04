@@ -1,26 +1,26 @@
 import {
-  pgTable,
+  mysqlTable,
   text,
-  integer,
+  int,
   date,
   timestamp,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const usageTrackingTable = pgTable("usage_tracking", {
+export const usageTrackingTable = mysqlTable("usage_tracking", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
   periodDate: date("period_date").notNull(),
-  messageCount: integer("message_count").notNull().default(0),
-  tokenInputCount: integer("token_input_count").notNull().default(0),
-  tokenOutputCount: integer("token_output_count").notNull().default(0),
-  tokenCacheHitCount: integer("token_cache_hit_count").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  messageCount: int("message_count").notNull().default(0),
+  tokenInputCount: int("token_input_count").notNull().default(0),
+  tokenOutputCount: int("token_output_count").notNull().default(0),
+  tokenCacheHitCount: int("token_cache_hit_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertUsageTrackingSchema = createInsertSchema(usageTrackingTable).omit({

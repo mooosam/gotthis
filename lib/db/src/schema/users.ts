@@ -1,15 +1,15 @@
 import {
-  pgTable,
+  mysqlTable,
   text,
-  integer,
+  int,
   boolean,
   timestamp,
-  jsonb,
-} from "drizzle-orm/pg-core";
+  json,
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const usersTable = pgTable("users", {
+export const usersTable = mysqlTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull(),
   phoneHash: text("phone_hash"),
@@ -19,25 +19,25 @@ export const usersTable = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
   isSuspended: boolean("is_suspended").notNull().default(false),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
-  dailyMessageCount: integer("daily_message_count").notNull().default(0),
-  dailyMessageResetAt: timestamp("daily_message_reset_at", { withTimezone: true }),
-  monthlyTokenCount: integer("monthly_token_count").notNull().default(0),
-  monthlyTokenResetAt: timestamp("monthly_token_reset_at", { withTimezone: true }),
-  dailyMessageCap: integer("daily_message_cap").notNull().default(5),
-  monthlyTokenAllowance: integer("monthly_token_allowance").notNull().default(50000),
+  dailyMessageCount: int("daily_message_count").notNull().default(0),
+  dailyMessageResetAt: timestamp("daily_message_reset_at"),
+  monthlyTokenCount: int("monthly_token_count").notNull().default(0),
+  monthlyTokenResetAt: timestamp("monthly_token_reset_at"),
+  dailyMessageCap: int("daily_message_cap").notNull().default(5),
+  monthlyTokenAllowance: int("monthly_token_allowance").notNull().default(50000),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   newsletterCadence: text("newsletter_cadence").notNull().default("weekly"),
-  lastWeeklyChartSentAt: timestamp("last_weekly_chart_sent_at", { withTimezone: true }),
-  lastNewsletterSentAt: timestamp("last_newsletter_sent_at", { withTimezone: true }),
-  monthlySkipCredits: integer("monthly_skip_credits").notNull().default(4),
-  skipCreditsUsed: integer("skip_credits_used").notNull().default(0),
-  skipCreditsResetAt: timestamp("skip_credits_reset_at", { withTimezone: true }),
-  preferredPushHour: integer("preferred_push_hour").notNull().default(8),
-  engagementSamples: jsonb("engagement_samples").$type<Array<{ hour: number; responded: boolean; ts: string }>>().notNull().default([]),
-  lastWeeklyInsightAt: timestamp("last_weekly_insight_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  lastWeeklyChartSentAt: timestamp("last_weekly_chart_sent_at"),
+  lastNewsletterSentAt: timestamp("last_newsletter_sent_at"),
+  monthlySkipCredits: int("monthly_skip_credits").notNull().default(4),
+  skipCreditsUsed: int("skip_credits_used").notNull().default(0),
+  skipCreditsResetAt: timestamp("skip_credits_reset_at"),
+  preferredPushHour: int("preferred_push_hour").notNull().default(8),
+  engagementSamples: json("engagement_samples").$type<Array<{ hour: number; responded: boolean; ts: string }>>().notNull().default([]),
+  lastWeeklyInsightAt: timestamp("last_weekly_insight_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({

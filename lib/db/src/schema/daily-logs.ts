@@ -1,16 +1,16 @@
 import {
-  pgTable,
+  mysqlTable,
   text,
   date,
-  jsonb,
+  json,
   timestamp,
-  unique,
-} from "drizzle-orm/pg-core";
+  uniqueIndex,
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const dailyLogsTable = pgTable(
+export const dailyLogsTable = mysqlTable(
   "daily_logs",
   {
     id: text("id").primaryKey(),
@@ -18,12 +18,12 @@ export const dailyLogsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     logDate: date("log_date").notNull(),
-    data: jsonb("data"),
+    data: json("data"),
     narrative: text("narrative"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
-  (t) => [unique("daily_logs_user_date_unique").on(t.userId, t.logDate)],
+  (t) => [uniqueIndex("daily_logs_user_date_unique").on(t.userId, t.logDate)],
 );
 
 export const insertDailyLogSchema = createInsertSchema(dailyLogsTable).omit({

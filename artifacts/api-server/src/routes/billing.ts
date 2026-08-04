@@ -378,7 +378,7 @@ router.post("/admin/stripe/seed-products", requireAuth, requireAdmin, async (_re
       db
         .insert(appSettingsTable)
         .values({ key, value })
-        .onConflictDoUpdate({ target: appSettingsTable.key, set: { value, updatedAt: new Date() } });
+        .onDuplicateKeyUpdate({ set: { value, updatedAt: new Date() } });
 
     await Promise.all([
       upsertSetting("stripe_price_pro_monthly", proMonthly.id),

@@ -1,9 +1,9 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { mysqlTable, text, timestamp } from "drizzle-orm/mysql-core";
 
-export const appSettingsTable = pgTable("app_settings", {
+export const appSettingsTable = mysqlTable("app_settings", {
   key:       text("key").primaryKey(),
   value:     text("value").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export type AppSetting = typeof appSettingsTable.$inferSelect;

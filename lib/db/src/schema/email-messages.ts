@@ -1,13 +1,13 @@
 import {
-  pgTable,
+  mysqlTable,
   text,
   timestamp,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const emailMessagesTable = pgTable("email_messages", {
+export const emailMessagesTable = mysqlTable("email_messages", {
   id: text("id").primaryKey(),
   userId: text("user_id")
     .notNull()
@@ -15,7 +15,7 @@ export const emailMessagesTable = pgTable("email_messages", {
   messageId: text("message_id").notNull().unique(),
   subject: text("subject").notNull(),
   emailType: text("email_type").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertEmailMessageSchema = createInsertSchema(emailMessagesTable).omit({
