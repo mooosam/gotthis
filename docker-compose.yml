@@ -1,52 +1,69 @@
 services:
-  # ── MySQL database ────────────────────────────────────────────────────────
+
+  # ── MySQL database ────────────────────────────────────────────────────────────
   mysql:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword        # change this
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ritual_ai
       MYSQL_USER: ritual
-      MYSQL_PASSWORD: yourpassword             # change this (match DATABASE_URL)
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
-  # ── API server ────────────────────────────────────────────────────────────
+  # ── Schema migration (runs once, exits 0, then API starts) ───────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.migrate
+    env_file: .env
+    environment:
+      # Use the Docker service hostname, not whatever is in .env
+      DATABASE_URL: mysql://ritual:${MYSQL_PASSWORD}@mysql:3306/ritual_ai
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  # ── API server ────────────────────────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: artifacts/api-server/Dockerfile
     restart: unless-stopped
-    env_file: .env                             # copy .env.example → .env and fill in
+    env_file: .env
     environment:
       PORT: "8080"
       NODE_ENV: production
-      # Overrides DATABASE_URL from .env to use the internal Docker hostname
-      DATABASE_URL: mysql://ritual:yourpassword@mysql:3306/ritual_ai
+      # Use the Docker service hostname, not whatever is in .env
+      DATABASE_URL: mysql://ritual:${MYSQL_PASSWORD}@mysql:3306/ritual_ai
     depends_on:
       mysql:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
-      # WhatsApp auth state must survive container restarts
+      # WhatsApp session must survive container restarts
       - whatsapp_auth:/app/.whatsapp-auth
 
-  # ── Web frontend (static build served by nginx) ───────────────────────────
+  # ── Web frontend (static build served by nginx) ───────────────────────────────
   web:
     build:
       context: .
       dockerfile: artifacts/web/Dockerfile
       args:
-        # Must match CLERK_PUBLISHABLE_KEY in your .env — baked in at build time
+        # Baked into the JS bundle at build time — must match CLERK_PUBLISHABLE_KEY
         VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
     restart: unless-stopped
 
-  # ── Reverse proxy (routes / → web, /api → api) ───────────────────────────
+  # ── Reverse proxy ─────────────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -55,7 +72,7 @@ services:
       - "443:443"
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # Uncomment and populate for TLS certificates (e.g. from Let's Encrypt)
+      # Uncomment after running: sudo certbot --nginx -d yourdomain.com
       # - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - api

@@ -1,36 +1,42 @@
 # Self-Hosting The Ritual AI on Oracle Cloud Free Tier
 
-This guide walks you through deploying the app on Oracle Cloud's always-free
-compute (VM) with MySQL HeatWave Free Tier.
+Deploy the full stack (API + frontend + MySQL) on Oracle Cloud's always-free
+Ampere VM using Docker Compose — no Kubernetes, no managed services required.
 
 ---
 
-## Prerequisites
+## Architecture
 
-- An Oracle Cloud account (free tier is sufficient)
-- A domain name pointed at your server's public IP
-- Docker + Docker Compose installed on your VM
+```
+Internet
+   │
+   ▼
+nginx:443/80          (reverse proxy + TLS)
+   ├── /api/  ──────► api:8080    (Node.js / Express)
+   └── /      ──────► web:3000    (nginx serving React static files)
+
+api ──────────────────► mysql:3306
+migrate (one-shot) ───► mysql:3306   (applies schema on first boot)
+```
 
 ---
 
-## 1. Provision Oracle Cloud resources
+## 1. Provision an Oracle Cloud VM
 
 ### Compute instance
 - Go to **Compute → Instances → Create Instance**
-- Shape: **VM.Standard.A1.Flex** (4 OCPU / 24 GB RAM — always free on Ampere)
-  - Or **VM.Standard.E2.1.Micro** (1 OCPU / 1 GB RAM) — suitable for light load
-- OS: **Ubuntu 22.04**
-- Add an SSH key so you can log in
+- Image: **Ubuntu 22.04**
+- Shape: **VM.Standard.A1.Flex** — 4 OCPU / 24 GB RAM, always free on Ampere ARM64
+  - (Or **VM.Standard.E2.1.Micro** for very light load — 1 OCPU / 1 GB)
+- Generate or upload an SSH key
 
-### Open ports in the VCN security list
-In the instance's VCN → Security Lists, add ingress rules for:
-- Port **22** (SSH)
-- Port **80** (HTTP)
-- Port **443** (HTTPS)
-
-### MySQL HeatWave (optional — free tier)
-Oracle offers a free MySQL HeatWave instance. Alternatively, just run MySQL
-in Docker (simpler, covered below).
+### Open firewall ports (VCN Security List)
+Add ingress rules for:
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 22   | TCP | SSH |
+| 80   | TCP | HTTP |
+| 443  | TCP | HTTPS |
 
 ---
 
@@ -51,157 +57,137 @@ newgrp docker
 git clone <your-repo-url> ritual-ai
 cd ritual-ai
 
-# Copy the example env file and fill in every value
+# Create your .env from the template
 cp .env.example .env
-nano .env
+nano .env          # fill in every value — see table below
 ```
 
-### Required values in `.env`
+### Required `.env` values
 
 | Variable | Where to get it |
 |---|---|
-| `DATABASE_URL` | `mysql://ritual:yourpassword@mysql:3306/ritual_ai` (use the Docker service name `mysql`) |
-| `CLERK_PUBLISHABLE_KEY` | [Clerk Dashboard](https://dashboard.clerk.com) → your app → API Keys |
-| `CLERK_SECRET_KEY` | Same as above |
+| `DATABASE_URL` | Leave as-is: `mysql://ritual:yourpassword@mysql:3306/ritual_ai` |
+| `MYSQL_PASSWORD` | Pick a strong password — must match the one in `DATABASE_URL` |
+| `MYSQL_ROOT_PASSWORD` | Pick a different strong password for the MySQL root user |
+| `CLERK_PUBLISHABLE_KEY` | [Clerk Dashboard](https://dashboard.clerk.com) → API Keys |
+| `CLERK_SECRET_KEY` | Same |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Same as `CLERK_PUBLISHABLE_KEY` |
-| `GEMINI_API_KEY | [Google AI Studio](https://aistudio.google.com/app/apikey) → Get API Key |
+| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/app/apikey) |
 | `SESSION_SECRET` | Any random 32+ character string |
-| `PHONE_PEPPER` | Any random 32+ character string |
-| `APP_URL` | `https://yourdomain.com` |
-| `ADMIN_BOOTSTRAP_EMAIL` | Your admin email |
+| `PHONE_PEPPER` | Any random 32+ character string (different from SESSION_SECRET) |
+| `APP_URL` | `https://yourdomain.com` (your public domain) |
+| `ADMIN_BOOTSTRAP_EMAIL` | Your admin email address |
 
-Stripe and email keys are optional — the app runs without them but paid plans
+Stripe and Resend keys are optional — the app runs without them but paid plans
 and newsletters won't work.
 
 ---
 
-## 4. Update docker-compose.yml passwords
+## 4. Point your domain at the VM
 
-In `docker-compose.yml`, change the MySQL passwords to match what you set in
-`.env`:
-
-```yaml
-MYSQL_ROOT_PASSWORD: your-secure-root-password
-MYSQL_PASSWORD: yourpassword   # must match DATABASE_URL
-```
-
-And in the `api` service environment block:
-```yaml
-DATABASE_URL: mysql://ritual:yourpassword@mysql:3306/ritual_ai
-```
+In your DNS provider, add an **A record** pointing `yourdomain.com` → the VM's
+public IP address. Wait for propagation (usually a few minutes).
 
 ---
 
-## 5. Configure your domain in nginx
-
-Edit `deploy/nginx.conf` and replace `_` with your domain:
-
-```nginx
-server_name yourdomain.com www.yourdomain.com;
-```
-
----
-
-## 6. Build and start
+## 5. Build and start
 
 ```bash
-# Build all containers and start in the background
+# First boot — builds all images and applies the DB schema (~5-10 min)
 docker compose up -d --build
 
-# Watch logs to confirm everything started cleanly
+# Watch the logs
+docker compose logs -f
+```
+
+What happens on first boot:
+1. **mysql** starts and initialises the database
+2. **migrate** runs `drizzle-kit push` to create all tables, then exits
+3. **api** starts once migration succeeds
+4. **web** and **nginx** start in parallel
+
+---
+
+## 6. Connect WhatsApp
+
+Once the stack is running, open your domain in a browser and navigate to the
+WhatsApp QR page. Scan the QR with your WhatsApp account.
+
+The session is stored in the `whatsapp_auth` Docker volume and survives
+container restarts automatically.
+
+---
+
+## 7. Enable HTTPS with Let's Encrypt (strongly recommended)
+
+```bash
+# Install certbot
+sudo apt install -y certbot python3-certbot-nginx
+
+# Obtain a certificate (nginx must already be serving port 80)
+sudo certbot --nginx -d yourdomain.com
+
+# Uncomment the HTTPS server blocks in deploy/nginx.conf
+nano deploy/nginx.conf
+
+# Reload nginx inside the container
+docker compose exec nginx nginx -s reload
+```
+
+Certbot auto-renews the certificate. The `docker-compose.yml` already has a
+commented-out volume mount for `/etc/letsencrypt` — uncomment it after running
+certbot.
+
+---
+
+## 8. Useful commands
+
+```bash
+# View all logs
+docker compose logs -f
+
+# View API logs only
 docker compose logs -f api
-```
 
-The first startup runs the database schema push automatically (see the
-`scripts/post-merge.sh` hook, or run it manually):
+# Restart the API (e.g. after a config change)
+docker compose restart api
 
-```bash
-docker compose exec api sh -c "cd /app && pnpm --filter @workspace/db run push"
-```
-
----
-
-## 7. Set up HTTPS with Let's Encrypt (recommended)
-
-```bash
-sudo apt install -y certbot
-
-# Stop nginx temporarily to allow certbot to bind port 80
-docker compose stop nginx
-
-# Get a certificate
-sudo certbot certonly --standalone -d yourdomain.com
-
-# Uncomment the HTTPS block in deploy/nginx.conf (instructions are in the file)
-# Then restart nginx
-docker compose start nginx
-```
-
----
-
-## 8. Connecting WhatsApp
-
-1. Visit `https://yourdomain.com/whatsapp` (admin accounts only)
-2. Enter your phone number to get a pairing code, or scan the QR code
-3. The auth state is persisted in the `whatsapp_auth` Docker volume — it
-   survives container restarts
-
----
-
-## 9. Updating the app
-
-```bash
+# Pull latest code and redeploy
 git pull
 docker compose up -d --build
-docker compose exec api sh -c "cd /app && pnpm --filter @workspace/db run push"
-```
 
----
-
-## Useful commands
-
-```bash
-# View live logs
-docker compose logs -f api
-docker compose logs -f nginx
+# Re-run migrations after a schema change
+docker compose run --rm migrate
 
 # Open a MySQL shell
 docker compose exec mysql mysql -u ritual -p ritual_ai
 
-# Restart a single service
-docker compose restart api
-
 # Stop everything
 docker compose down
 
-# Stop and wipe the database (destructive!)
+# Stop everything and delete the database (destructive!)
 docker compose down -v
 ```
 
 ---
 
-## Using Oracle MySQL HeatWave instead of Docker MySQL
+## 9. Environment variable reference
 
-If you prefer to use Oracle's managed MySQL instead of the Docker container:
-
-1. Provision a **MySQL HeatWave** instance in Oracle Cloud Console
-2. Note the endpoint, port, username, and password
-3. Remove the `mysql` service from `docker-compose.yml`
-4. Update `.env`:
-   ```
-   DATABASE_URL=mysql://admin:yourpassword@<heatwave-endpoint>:3306/ritual_ai
-   ```
-5. Update `docker-compose.yml` — remove the `depends_on: mysql` condition from
-   the `api` service, or replace it with a simple startup delay
-
----
-
-## Architecture overview
-
-```
-Internet → nginx (80/443)
-              ├── /api/* → api:8080  (Node.js Express + Baileys)
-              └── /*     → web:3000  (React static files)
-                              │
-                          mysql:3306 (MySQL 8.0)
-```
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | ✅ | MySQL connection string |
+| `MYSQL_PASSWORD` | ✅ | MySQL `ritual` user password |
+| `MYSQL_ROOT_PASSWORD` | ✅ | MySQL root password |
+| `CLERK_PUBLISHABLE_KEY` | ✅ | Clerk public key |
+| `CLERK_SECRET_KEY` | ✅ | Clerk secret key |
+| `VITE_CLERK_PUBLISHABLE_KEY` | ✅ | Same as `CLERK_PUBLISHABLE_KEY` (baked into frontend build) |
+| `GEMINI_API_KEY` | ✅ | Google AI Studio API key |
+| `SESSION_SECRET` | ✅ | Random 32+ char string for session signing |
+| `PHONE_PEPPER` | ✅ | Random 32+ char string for phone number hashing |
+| `APP_URL` | ✅ | Public URL (`https://yourdomain.com`) |
+| `ADMIN_BOOTSTRAP_EMAIL` | ✅ | Email for the first admin account |
+| `ADMIN_USER_IDS` | ⚠️ | Comma-separated Clerk user IDs for admin access |
+| `STRIPE_SECRET_KEY` | Optional | Required for paid plans |
+| `STRIPE_WEBHOOK_SECRET` | Optional | Required for Stripe webhooks |
+| `RESEND_API_KEY` | Optional | Required for email newsletters |
+| `EMAIL_FROM` | Optional | Sender address for newsletters |

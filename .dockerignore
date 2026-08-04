@@ -1,0 +1,35 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (rebuilt inside Docker)
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt inside Docker)
+dist
+**/dist
+
+# Local env files — never bake secrets into the image
+.env
+.env.*
+!.env.example
+
+# Replit / editor artefacts
+.replit
+replit.nix
+.upm
+.cache
+.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# WhatsApp auth state (mounted as a volume)
+.whatsapp-auth
+
+# Test / coverage
+coverage
+**/*.test.ts
+**/*.spec.ts
