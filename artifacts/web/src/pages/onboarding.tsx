@@ -176,7 +176,7 @@ export default function OnboardingPage() {
         {step === 1 && (
           <Card className="border-border/40 shadow-sm" data-testid="onboarding-step-1">
             <CardHeader className="space-y-2 pb-6">
-              <CardTitle className="font-serif text-3xl font-bold">Set up your Ritual</CardTitle>
+              <CardTitle className="font-serif text-3xl font-bold">Setup your Account</CardTitle>
               <CardDescription className="text-base text-muted-foreground">
                 Configure how your AI coach will interact with you.
               </CardDescription>
