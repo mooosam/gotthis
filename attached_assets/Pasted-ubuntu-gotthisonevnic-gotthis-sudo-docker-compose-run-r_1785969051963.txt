@@ -1,0 +1,58 @@
+ubuntu@gotthisonevnic:~/gotthis$ sudo docker compose run --rm migrate
+[+]  1/1t 1/11
+ ✔ Container gotthis-mysql-1 Started                                                                                8.6s
+Container gotthis-mysql-1 Waiting
+Container gotthis-mysql-1 Healthy
+Container gotthis-migrate-run-230a38be3374 Creating
+Container gotthis-migrate-run-230a38be3374 Created
+
+> @workspace/db@0.0.0 push /app/lib/db
+> drizzle-kit push --config ./drizzle.config.ts
+
+Reading config file '/app/lib/db/drizzle.config.ts'
+[✓] Pulling schema from database...
+Reading schema files:
+/app/lib/db/src/schema/index.ts
+
+Error: BLOB/TEXT column 'id' used in key specification without a key length
+    at Object.query (/app/node_modules/.pnpm/drizzle-kit@0.31.9/node_modules/drizzle-kit/bin.cjs:81041:40)
+    at mysqlPush (/app/node_modules/.pnpm/drizzle-kit@0.31.9/node_modules/drizzle-kit/bin.cjs:84318:22)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Object.handler (/app/node_modules/.pnpm/drizzle-kit@0.31.9/node_modules/drizzle-kit/bin.cjs:93912:9)
+    at async run (/app/node_modules/.pnpm/drizzle-kit@0.31.9/node_modules/drizzle-kit/bin.cjs:93189:7) {
+  code: 'ER_BLOB_KEY_WITHOUT_LENGTH',
+  errno: 1170,
+  sqlState: '42000',
+  sqlMessage: "BLOB/TEXT column 'id' used in key specification without a key length",
+  sql: 'CREATE TABLE `users` (\n' +
+    '\t`id` text NOT NULL,\n' +
+    '\t`email` text NOT NULL,\n' +
+    '\t`phone_hash` text,\n' +
+    '\t`whatsapp_jid` text,\n' +
+    "\t`timezone` text NOT NULL DEFAULT ('UTC'),\n" +
+    "\t`tier` text NOT NULL DEFAULT ('free'),\n" +
+    '\t`is_admin` boolean NOT NULL DEFAULT false,\n' +
+    '\t`is_suspended` boolean NOT NULL DEFAULT false,\n' +
+    '\t`onboarding_completed` boolean NOT NULL DEFAULT false,\n' +
+    '\t`daily_message_count` int NOT NULL DEFAULT 0,\n' +
+    '\t`daily_message_reset_at` timestamp,\n' +
+    '\t`monthly_token_count` int NOT NULL DEFAULT 0,\n' +
+    '\t`monthly_token_reset_at` timestamp,\n' +
+    '\t`daily_message_cap` int NOT NULL DEFAULT 5,\n' +
+    '\t`monthly_token_allowance` int NOT NULL DEFAULT 50000,\n' +
+    '\t`stripe_customer_id` text,\n' +
+    '\t`stripe_subscription_id` text,\n' +
+    "\t`newsletter_cadence` text NOT NULL DEFAULT ('weekly'),\n" +
+    '\t`last_weekly_chart_sent_at` timestamp,\n' +
+    '\t`last_newsletter_sent_at` timestamp,\n' +
+    '\t`monthly_skip_credits` int NOT NULL DEFAULT 4,\n' +
+    '\t`skip_credits_used` int NOT NULL DEFAULT 0,\n' +
+    '\t`skip_credits_reset_at` timestamp,\n' +
+    '\t`preferred_push_hour` int NOT NULL DEFAULT 8,\n' +
+    "\t`engagement_samples` json NOT NULL DEFAULT ('[]'),\n" +
+    '\t`last_weekly_insight_at` timestamp,\n' +
+    '\t`created_at` timestamp NOT NULL DEFAULT (now()),\n' +
+    '\t`updated_at` timestamp NOT NULL DEFAULT (now()),\n' +
+    '\tCONSTRAINT `users_id` PRIMARY KEY(`id`)\n' +
+    ');\n'
+}
