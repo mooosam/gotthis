@@ -48,7 +48,12 @@ if (!clerkPubKey) {
 function SignInPage() {
   return (
     <div className="flex justify-center mt-8">
-      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+        afterSignInUrl={`${basePath}/dashboard`}
+      />
     </div>
   );
 }
@@ -56,7 +61,12 @@ function SignInPage() {
 function SignUpPage() {
   return (
     <div className="flex justify-center mt-8">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+        afterSignUpUrl={`${basePath}/onboarding`}
+      />
     </div>
   );
 }
