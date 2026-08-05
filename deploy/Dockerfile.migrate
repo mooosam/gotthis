@@ -13,7 +13,7 @@ COPY tsconfig.json tsconfig.base.json ./
 COPY lib/db/ ./lib/db/
 
 # Install only @workspace/db and its deps (includes drizzle-kit devDep)
-RUN pnpm install --frozen-lockfile --filter @workspace/db
+RUN pnpm install --frozen-lockfile --filter @workspace/db --ignore-scripts
 
 WORKDIR /app/lib/db
 
