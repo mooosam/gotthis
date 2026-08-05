@@ -1,6 +1,6 @@
 # ── Build stage ───────────────────────────────────────────────────────────────
 # Compiles the React/Vite app into static files.
-FROM node:24-alpine AS build
+FROM node:24-slim AS build
 
 WORKDIR /app
 RUN npm install -g pnpm@10.26.1
