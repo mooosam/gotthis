@@ -10,7 +10,7 @@ COPY tsconfig.json tsconfig.base.json ./
 COPY lib/ ./lib/
 COPY artifacts/web/ ./artifacts/web/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # VITE_CLERK_PUBLISHABLE_KEY must be available at build time —
 # it gets baked into the JS bundle by Vite.
