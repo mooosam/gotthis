@@ -1,0 +1,66 @@
+Do a full audit of this codebase (Ritual AI — WhatsApp-first AI goal coaching SaaS). 
+Don't fix anything yet — first give me a complete written report, organized by area, 
+covering what exists, what's broken, what's missing, and what's a risk. Then wait for 
+my go-ahead before making changes.
+
+## Scope
+
+### 1. Frontend (artifacts/web — React/Vite/TS/Tailwind/shadcn)
+- Walk every route/page in the marketing site and dashboard. Flag dead links, unused 
+  components, broken states (empty/loading/error), and any UI that doesn't match what 
+  the backend actually returns.
+- Check Clerk auth integration: Google SSO and email OTP flows, session handling, 
+  protected route guards, what happens on token expiry.
+- Check the WhatsApp-connect flow end to end from the dashboard's perspective (QR display, 
+  connection status polling/updates, reconnect/disconnect UX).
+- Check billing UI against actual Stripe state (plan display, upgrade/downgrade, 
+  cancellation, failed payment handling).
+
+### 2. Backend (artifacts/api-server — Express 5/TS/Drizzle/MySQL)
+- List every REST endpoint. For each: confirm requireAuth is applied where it should be, 
+  confirm input validation exists, and flag any endpoint with no error handling.
+- Review the Drizzle schema vs actual usage: unused tables/columns, missing indexes on 
+  frequently queried fields, missing foreign key constraints, any N+1 query patterns.
+- Review the WhatsApp message pipeline (Baileys): what happens if the session drops mid-
+  conversation, how reconnection is handled, whether inbound messages can be processed 
+  twice (idempotency), and whether the auth session persistence survives a container 
+  restart cleanly.
+- Review the Gemini AI pipeline: how conversation memory is summarized and stored, 
+  whether there's a fallback if the Gemini API errors or times out, and whether user 
+  input reaching the model is sanitized against prompt injection.
+
+### 3. Data & migrations
+- Check migration history for drift vs the current schema file.
+- Check for any tables/columns with no corresponding app code (orphaned) or app code 
+  referencing fields that don't exist.
+- Check how magic links and memory summaries expire/get cleaned up.
+
+### 4. Auth & security
+- Confirm every non-public endpoint actually enforces Clerk JWT validation — list any 
+  that don't.
+- Check for secrets in code/logs (Gemini key, Stripe key, DB creds, Clerk secret).
+- Check CORS config, rate limiting (or lack of it) on the API and WhatsApp webhook-style 
+  entry points.
+- Check Stripe webhook signature verification.
+
+### 5. Infra (Docker Compose on Oracle Cloud)
+- Review the compose file: health checks, restart policies, whether MySQL data is on a 
+  persistent volume, whether the WhatsApp auth session survives container 
+  recreation (not just restart).
+- Check nginx reverse proxy config: SSL/TLS setup, security headers, whether internal 
+  ports are exposed unnecessarily.
+- Flag any hardcoded ports/hostnames/IPs that should be env vars.
+
+### 6. Payments (Stripe)
+- Confirm plan limits are actually enforced server-side, not just checked in the UI.
+- Check for a reconciliation path if a webhook is missed (e.g. subscription cancelled 
+  but app never finds out).
+
+## Output format
+Give me:
+1. A short overall health summary (2-4 sentences).
+2. A table or list of findings grouped by area above, each tagged Critical / High / 
+   Medium / Low, with a one-line description and the file/location.
+3. A prioritized fix order for the Critical and High items.
+
+Then stop and wait for me to say "go ahead" before touching any code.
