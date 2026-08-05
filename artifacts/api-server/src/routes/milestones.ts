@@ -59,16 +59,22 @@ router.post("/goals/:goalId/milestones", requireAuth, async (req, res): Promise<
     ? order
     : (existing.length > 0 ? Math.max(...existing.map((m) => m.order)) + 1 : 1);
 
-  const [milestone] = await db
+  // MySQL: no .returning() — insert then re-select by id
+  const milestoneId = nanoid();
+  await db
     .insert(milestonesTable)
     .values({
-      id: nanoid(),
+      id: milestoneId,
       goalId,
       userId,
       title: title.trim(),
       order: nextOrder,
-    })
-    .returning();
+    });
+
+  const [milestone] = await db
+    .select()
+    .from(milestonesTable)
+    .where(eq(milestonesTable.id, milestoneId));
 
   res.status(201).json(milestone);
 });
@@ -92,7 +98,8 @@ router.patch("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req, 
     return;
   }
 
-  const [milestone] = await db
+  // MySQL: no .returning() — update then re-select
+  await db
     .update(milestonesTable)
     .set(updates)
     .where(
@@ -101,8 +108,18 @@ router.patch("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req, 
         eq(milestonesTable.goalId, goalId),
         eq(milestonesTable.userId, userId),
       ),
-    )
-    .returning();
+    );
+
+  const [milestone] = await db
+    .select()
+    .from(milestonesTable)
+    .where(
+      and(
+        eq(milestonesTable.id, milestoneId),
+        eq(milestonesTable.goalId, goalId),
+        eq(milestonesTable.userId, userId),
+      ),
+    );
 
   if (!milestone) {
     res.status(404).json({ error: "Milestone not found" });
@@ -117,7 +134,24 @@ router.delete("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req,
   const goalId = req.params["goalId"] as string;
   const milestoneId = req.params["milestoneId"] as string;
 
+  // MySQL: no .returning() on DELETE — select first to confirm existence
   const [milestone] = await db
+    .select()
+    .from(milestonesTable)
+    .where(
+      and(
+        eq(milestonesTable.id, milestoneId),
+        eq(milestonesTable.goalId, goalId),
+        eq(milestonesTable.userId, userId),
+      ),
+    );
+
+  if (!milestone) {
+    res.status(404).json({ error: "Milestone not found" });
+    return;
+  }
+
+  await db
     .delete(milestonesTable)
     .where(
       and(
@@ -125,13 +159,7 @@ router.delete("/goals/:goalId/milestones/:milestoneId", requireAuth, async (req,
         eq(milestonesTable.goalId, goalId),
         eq(milestonesTable.userId, userId),
       ),
-    )
-    .returning();
-
-  if (!milestone) {
-    res.status(404).json({ error: "Milestone not found" });
-    return;
-  }
+    );
 
   res.sendStatus(204);
 });

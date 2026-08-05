@@ -17,7 +17,6 @@ import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 
-// All admin routes require both an authenticated user AND the admin flag.
 router.use(requireAuth, requireAdmin);
 
 // -----------------------------------------------------------------------------
@@ -62,31 +61,29 @@ router.get("/admin/stats", async (_req, res): Promise<void> => {
     .select({ total: count() })
     .from(dailyLogsTable);
 
-  // Today's totals across all users.
+  // MySQL: use CAST(... AS UNSIGNED) instead of PostgreSQL ::int cast
   const [todayUsage] = await db
     .select({
-      messages: sql<number>`COALESCE(SUM(${usageTrackingTable.messageCount}), 0)::int`,
-      input: sql<number>`COALESCE(SUM(${usageTrackingTable.tokenInputCount}), 0)::int`,
-      output: sql<number>`COALESCE(SUM(${usageTrackingTable.tokenOutputCount}), 0)::int`,
-      cacheHits: sql<number>`COALESCE(SUM(${usageTrackingTable.tokenCacheHitCount}), 0)::int`,
+      messages: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.messageCount}), 0) AS UNSIGNED)`,
+      input: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.tokenInputCount}), 0) AS UNSIGNED)`,
+      output: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.tokenOutputCount}), 0) AS UNSIGNED)`,
+      cacheHits: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.tokenCacheHitCount}), 0) AS UNSIGNED)`,
     })
     .from(usageTrackingTable)
     .where(eq(usageTrackingTable.periodDate, today));
 
-  // Last 7 days of usage, grouped by date.
   const usageByDay = await db
     .select({
       date: usageTrackingTable.periodDate,
-      messages: sql<number>`COALESCE(SUM(${usageTrackingTable.messageCount}), 0)::int`,
-      input: sql<number>`COALESCE(SUM(${usageTrackingTable.tokenInputCount}), 0)::int`,
-      output: sql<number>`COALESCE(SUM(${usageTrackingTable.tokenOutputCount}), 0)::int`,
+      messages: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.messageCount}), 0) AS UNSIGNED)`,
+      input: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.tokenInputCount}), 0) AS UNSIGNED)`,
+      output: sql<number>`CAST(COALESCE(SUM(${usageTrackingTable.tokenOutputCount}), 0) AS UNSIGNED)`,
     })
     .from(usageTrackingTable)
     .where(gte(usageTrackingTable.periodDate, sevenDaysAgo.toISOString().slice(0, 10)))
     .groupBy(usageTrackingTable.periodDate)
     .orderBy(asc(usageTrackingTable.periodDate));
 
-  // Tier distribution.
   const tierBreakdown = await db
     .select({
       tier: usersTable.tier,
@@ -96,7 +93,6 @@ router.get("/admin/stats", async (_req, res): Promise<void> => {
     .groupBy(usersTable.tier)
     .orderBy(desc(count()));
 
-  // Rough monthly recurring revenue from the plans table.
   const plansRows = await db.select().from(plansTable);
   const planByTier = new Map(plansRows.map((p) => [p.slug, p]));
   let mrrCents = 0;
@@ -236,8 +232,6 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     updates.monthlySkipCredits = Math.floor(body.monthlySkipCredits);
   }
   if (typeof body.isAdmin === "boolean") {
-    // Guardrail: never let an admin demote themselves through the API. Avoids
-    // accidentally locking everyone out.
     if (id === requesterId && body.isAdmin === false) {
       res.status(400).json({ error: "You cannot remove your own admin access." });
       return;
@@ -263,11 +257,13 @@ router.patch("/admin/users/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const [updated] = await db
+  // MySQL: no .returning() — update then re-select
+  await db
     .update(usersTable)
     .set(updates)
-    .where(eq(usersTable.id, id))
-    .returning();
+    .where(eq(usersTable.id, id));
+
+  const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, id));
 
   if (!updated) {
     res.status(404).json({ error: "User not found" });
@@ -291,16 +287,17 @@ router.post("/admin/users/:id/apply-plan", async (req, res): Promise<void> => {
     return;
   }
 
-  const [updated] = await db
+  // MySQL: no .returning() — update then re-select
+  await db
     .update(usersTable)
     .set({
       dailyMessageCap: plan.dailyMessageCap,
       monthlyTokenAllowance: plan.monthlyTokenAllowance,
       monthlySkipCredits: plan.monthlySkipCredits,
     })
-    .where(eq(usersTable.id, id))
-    .returning();
+    .where(eq(usersTable.id, id));
 
+  const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   res.json(updated);
 });
 
@@ -313,25 +310,24 @@ router.delete("/admin/users/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  // Cascade delete every table that has a userId FK so the final users-row
-  // delete doesn't fail with a foreign key constraint violation.
-  // Milestones cascade through goals automatically.
+  // Check existence before cascading deletes (MySQL: no DELETE...RETURNING)
+  const [targetUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.id, id));
+
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
   await db.delete(magicLinksTable).where(eq(magicLinksTable.userId, id));
   await db.delete(memorySummariesTable).where(eq(memorySummariesTable.userId, id));
   await db.delete(emailMessagesTable).where(eq(emailMessagesTable.userId, id));
   await db.delete(goalsTable).where(eq(goalsTable.userId, id));
   await db.delete(dailyLogsTable).where(eq(dailyLogsTable.userId, id));
   await db.delete(usageTrackingTable).where(eq(usageTrackingTable.userId, id));
-
-  const deleted = await db
-    .delete(usersTable)
-    .where(eq(usersTable.id, id))
-    .returning();
-
-  if (deleted.length === 0) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
+  await db.delete(usersTable).where(eq(usersTable.id, id));
 
   logger.info({ adminId: requesterId, deletedId: id }, "admin deleted user");
   res.status(204).send();
@@ -364,7 +360,8 @@ router.post("/admin/plans", async (req, res): Promise<void> => {
   }
 
   try {
-    const [created] = await db
+    // MySQL: no .returning() — insert then re-select by slug
+    await db
       .insert(plansTable)
       .values({
         slug,
@@ -388,8 +385,9 @@ router.post("/admin/plans", async (req, res): Promise<void> => {
             : "monthly",
         isActive: typeof body.isActive === "boolean" ? body.isActive : true,
         sortOrder: typeof body.sortOrder === "number" ? Math.floor(body.sortOrder) : 0,
-      })
-      .returning();
+      });
+
+    const [created] = await db.select().from(plansTable).where(eq(plansTable.slug, slug));
     res.status(201).json(created);
   } catch (err) {
     logger.warn({ err }, "Failed to create plan");
@@ -427,11 +425,13 @@ router.patch("/admin/plans/:slug", async (req, res): Promise<void> => {
     return;
   }
 
-  const [updated] = await db
+  // MySQL: no .returning() — update then re-select
+  await db
     .update(plansTable)
     .set(updates)
-    .where(eq(plansTable.slug, slug))
-    .returning();
+    .where(eq(plansTable.slug, slug));
+
+  const [updated] = await db.select().from(plansTable).where(eq(plansTable.slug, slug));
 
   if (!updated) {
     res.status(404).json({ error: "Plan not found" });
@@ -442,8 +442,7 @@ router.patch("/admin/plans/:slug", async (req, res): Promise<void> => {
 
 router.delete("/admin/plans/:slug", async (req, res): Promise<void> => {
   const { slug } = req.params;
-  // Refuse to delete a plan that's currently assigned to any user; admin must
-  // migrate them first.
+
   const [usersOnPlan] = await db
     .select({ total: count() })
     .from(usersTable)
@@ -455,14 +454,18 @@ router.delete("/admin/plans/:slug", async (req, res): Promise<void> => {
     return;
   }
 
-  const deleted = await db
-    .delete(plansTable)
-    .where(eq(plansTable.slug, slug))
-    .returning();
-  if (deleted.length === 0) {
+  // MySQL: no .returning() on DELETE — check existence first
+  const [existingPlan] = await db
+    .select({ slug: plansTable.slug })
+    .from(plansTable)
+    .where(eq(plansTable.slug, slug));
+
+  if (!existingPlan) {
     res.status(404).json({ error: "Plan not found" });
     return;
   }
+
+  await db.delete(plansTable).where(eq(plansTable.slug, slug));
   res.status(204).send();
 });
 

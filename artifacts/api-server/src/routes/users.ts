@@ -42,11 +42,13 @@ router.put("/users/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [updated] = await db
+  // MySQL: no .returning() — update then re-select
+  await db
     .update(usersTable)
     .set(updates)
-    .where(eq(usersTable.id, userId))
-    .returning();
+    .where(eq(usersTable.id, userId));
+
+  const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
 
   if (!updated) {
     res.status(404).json({ error: "User not found" });
@@ -62,11 +64,13 @@ router.post(
   async (req, res): Promise<void> => {
     const userId = (req as typeof req & { userId: string }).userId;
 
-    const [updated] = await db
+    // MySQL: no .returning() — update then re-select
+    await db
       .update(usersTable)
       .set({ onboardingCompleted: true })
-      .where(eq(usersTable.id, userId))
-      .returning();
+      .where(eq(usersTable.id, userId));
+
+    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
 
     if (!updated) {
       res.status(404).json({ error: "User not found" });

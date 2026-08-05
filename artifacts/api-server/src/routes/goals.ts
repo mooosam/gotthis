@@ -15,9 +15,6 @@ import {
 
 const router: IRouter = Router();
 
-// Verify a candidate parent goal exists, belongs to the user, and (when editing)
-// would not create a cycle with the goal being updated. Returns an error string
-// to send to the client, or null if valid.
 async function validateParent(
   userId: string,
   parentGoalId: string,
@@ -89,7 +86,6 @@ router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<
   } = parsed.data;
 
   const resolvedType = goalType ?? "habit";
-  // Quantitative types accumulate over time; force ongoing cadence
   const resolvedCadence =
     resolvedType === "target" || resolvedType === "average" || resolvedType === "milestone"
       ? "ongoing"
@@ -103,10 +99,12 @@ router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<
     }
   }
 
-  const [goal] = await db
+  // MySQL: no .returning() — insert then re-select by id
+  const goalId = nanoid();
+  await db
     .insert(goalsTable)
     .values({
-      id: nanoid(),
+      id: goalId,
       userId,
       parentGoalId: parentGoalId ?? null,
       title,
@@ -119,9 +117,9 @@ router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<
       targetValue: targetValue ?? null,
       targetUnit: targetUnit ?? null,
       shareToken: nanoid(16),
-    })
-    .returning();
+    });
 
+  const [goal] = await db.select().from(goalsTable).where(eq(goalsTable.id, goalId));
   res.status(201).json(goal);
 });
 
@@ -178,7 +176,6 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     parentGoalId,
   } = bodyParsed.data;
 
-  // Load existing goal first so we can resolve effective fields when only a subset is patched.
   const [existing] = await db
     .select()
     .from(goalsTable)
@@ -189,7 +186,6 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  // Validate parent change before making any writes.
   if (parentGoalId !== undefined && parentGoalId !== null) {
     const err = await validateParent(userId, parentGoalId, paramsParsed.data.id);
     if (err) {
@@ -211,14 +207,12 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (currentValue !== undefined) updates.currentValue = currentValue;
   if (parentGoalId !== undefined) updates.parentGoalId = parentGoalId;
 
-  // Resolve effective values to enforce invariants and derive progress consistently.
   const effectiveType = goalType ?? existing.goalType;
   const effectiveTarget = targetValue !== undefined ? targetValue : existing.targetValue;
   const effectiveCurrent = currentValue !== undefined ? currentValue : existing.currentValue;
   const isQuant = effectiveType === "target" || effectiveType === "average";
   const isMilestoneOrQuant = isQuant || effectiveType === "milestone";
 
-  // Type/cadence invariant: non-habit types are always 'ongoing' (no daily reset / streaks).
   if (cadence !== undefined) {
     updates.cadence = isMilestoneOrQuant ? "ongoing" : cadence;
   } else if (goalType !== undefined && isMilestoneOrQuant && existing.cadence !== "ongoing") {
@@ -226,10 +220,8 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   }
 
   if (isQuant && effectiveTarget && effectiveTarget > 0) {
-    // Auto-derive progress for quantitative types from effective current/target.
     updates.progress = Math.min(100, Math.round((effectiveCurrent / effectiveTarget) * 100));
   } else if (progress !== undefined) {
-    // Manual progress only honored for non-quantitative types.
     updates.progress = progress;
   }
 
@@ -238,11 +230,16 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [goal] = await db
+  // MySQL: no .returning() — update then re-select
+  await db
     .update(goalsTable)
     .set(updates)
-    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)))
-    .returning();
+    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+
+  const [goal] = await db
+    .select()
+    .from(goalsTable)
+    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
 
   if (!goal) {
     res.status(404).json({ error: "Goal not found" });
@@ -261,15 +258,20 @@ router.delete("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  // MySQL: no .returning() on DELETE — select first to confirm existence
   const [goal] = await db
-    .delete(goalsTable)
-    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)))
-    .returning();
+    .select()
+    .from(goalsTable)
+    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
 
   if (!goal) {
     res.status(404).json({ error: "Goal not found" });
     return;
   }
+
+  await db
+    .delete(goalsTable)
+    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
 
   res.sendStatus(204);
 });

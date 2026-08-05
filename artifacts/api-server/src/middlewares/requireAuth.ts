@@ -38,18 +38,16 @@ export async function requireAuth(
     .where(eq(usersTable.id, clerkId));
 
   if (!user) {
-    // Authoritative email comes from Clerk's user record — JWT session claims
-    // do not include email by default and shape varies across Clerk versions.
     const email = await fetchClerkEmail(clerkId);
 
-    // Bootstrap admin: any user signing up with the configured admin email is
-    // auto-flagged. Lets the operator promote themselves without DB access.
     const shouldBeAdmin =
       ADMIN_BOOTSTRAP_EMAIL.length > 0 &&
       email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
 
-    [user] = await db
+    // MySQL: use .ignore() instead of onConflictDoNothing(); no .returning() support
+    await db
       .insert(usersTable)
+      .ignore()
       .values({
         id: clerkId,
         email,
@@ -57,45 +55,39 @@ export async function requireAuth(
         dailyMessageCap: 5,
         monthlyTokenAllowance: 50000,
         isAdmin: shouldBeAdmin,
-      })
-      .onConflictDoNothing()
-      .returning();
+      });
 
-    if (!user) {
-      [user] = await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.id, clerkId));
-    }
+    [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, clerkId));
   }
 
-  // Backfill missing email from Clerk if older accounts have no email recorded
-  // (this also enables the idempotent admin upgrade below to work for them).
+  // Backfill missing email from Clerk if older accounts have no email recorded.
   if (user && !user.email) {
     const fresh = await fetchClerkEmail(clerkId);
     if (fresh) {
-      [user] = await db
+      await db
         .update(usersTable)
         .set({ email: fresh })
-        .where(eq(usersTable.id, user.id))
-        .returning();
+        .where(eq(usersTable.id, user.id));
+      [user] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     }
   }
 
-  // Idempotent admin upgrade for users that existed before the bootstrap email
-  // was configured.
+  // Idempotent admin upgrade for bootstrap email.
   if (
     user &&
     !user.isAdmin &&
     ADMIN_BOOTSTRAP_EMAIL.length > 0 &&
     user.email.trim().toLowerCase() === ADMIN_BOOTSTRAP_EMAIL
   ) {
-    [user] = await db
+    await db
       .update(usersTable)
       .set({ isAdmin: true })
-      .where(eq(usersTable.id, user.id))
-      .returning();
-    logger.info({ userId: user.id }, "Auto-promoted bootstrap admin");
+      .where(eq(usersTable.id, user.id));
+    [user] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    logger.info({ userId: user!.id }, "Auto-promoted bootstrap admin");
   }
 
   if (user?.isSuspended) {
@@ -103,7 +95,7 @@ export async function requireAuth(
     return;
   }
 
-  (req as Request & { userId: string; user: typeof user }).userId = user.id;
+  (req as Request & { userId: string; user: typeof user }).userId = user!.id;
   (req as Request & { userId: string; user: typeof user }).user = user;
   next();
 }

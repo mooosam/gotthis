@@ -47,27 +47,29 @@ router.post("/daily-logs", requireAuth, async (req, res): Promise<void> => {
 
   const { logDate, data, narrative } = parsed.data;
 
-  let log;
+  const logId = nanoid();
   try {
-    [log] = await db
+    // MySQL: no .returning() — insert then re-select by id
+    await db
       .insert(dailyLogsTable)
       .values({
-        id: nanoid(),
+        id: logId,
         userId,
         logDate,
         data: data ?? null,
         narrative: narrative ?? null,
-      })
-      .returning();
+      });
   } catch (err: unknown) {
-    const pg = err as { code?: string };
-    if (pg.code === "23505") {
+    const dbErr = err as { code?: string };
+    // MySQL duplicate entry: ER_DUP_ENTRY; PostgreSQL: 23505
+    if (dbErr.code === "ER_DUP_ENTRY" || dbErr.code === "23505") {
       res.status(409).json({ error: "A log for this date already exists" });
       return;
     }
     throw err;
   }
 
+  const [log] = await db.select().from(dailyLogsTable).where(eq(dailyLogsTable.id, logId));
   res.status(201).json(log);
 });
 
@@ -130,7 +132,8 @@ router.patch(
       return;
     }
 
-    const [log] = await db
+    // MySQL: no .returning() — update then re-select
+    await db
       .update(dailyLogsTable)
       .set(updates)
       .where(
@@ -138,8 +141,17 @@ router.patch(
           eq(dailyLogsTable.userId, userId),
           eq(dailyLogsTable.logDate, paramsParsed.data.date),
         ),
-      )
-      .returning();
+      );
+
+    const [log] = await db
+      .select()
+      .from(dailyLogsTable)
+      .where(
+        and(
+          eq(dailyLogsTable.userId, userId),
+          eq(dailyLogsTable.logDate, paramsParsed.data.date),
+        ),
+      );
 
     if (!log) {
       res.status(404).json({ error: "Daily log not found" });
@@ -162,20 +174,30 @@ router.delete(
       return;
     }
 
+    // MySQL: no .returning() on DELETE — select first to confirm existence
     const [log] = await db
+      .select()
+      .from(dailyLogsTable)
+      .where(
+        and(
+          eq(dailyLogsTable.userId, userId),
+          eq(dailyLogsTable.logDate, parsed.data.date),
+        ),
+      );
+
+    if (!log) {
+      res.status(404).json({ error: "Daily log not found" });
+      return;
+    }
+
+    await db
       .delete(dailyLogsTable)
       .where(
         and(
           eq(dailyLogsTable.userId, userId),
           eq(dailyLogsTable.logDate, parsed.data.date),
         ),
-      )
-      .returning();
-
-    if (!log) {
-      res.status(404).json({ error: "Daily log not found" });
-      return;
-    }
+      );
 
     res.sendStatus(204);
   },

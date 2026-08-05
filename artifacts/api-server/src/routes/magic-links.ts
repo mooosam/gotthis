@@ -27,13 +27,14 @@ router.post("/magic-links", requireAuth, async (req, res): Promise<void> => {
 
   const baseUrl = process.env.REPLIT_DOMAINS
     ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
-    : "http://localhost:80";
+    : process.env.APP_URL ?? "http://localhost:80";
 
   const url = targetDate
     ? `${baseUrl}/review/${targetDate}?token=${token}`
     : `${baseUrl}/goal/${targetGoalId}?token=${token}`;
 
-  const [link] = await db
+  // MySQL: no .returning() — build response from known values
+  await db
     .insert(magicLinksTable)
     .values({
       id: nanoid(),
@@ -42,13 +43,12 @@ router.post("/magic-links", requireAuth, async (req, res): Promise<void> => {
       targetDate: targetDate ?? null,
       targetGoalId: targetGoalId ?? null,
       expiresAt,
-    })
-    .returning();
+    });
 
   res.status(201).json({
-    token: link.token,
+    token,
     url,
-    expiresAt: link.expiresAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
   });
 });
 
