@@ -4,7 +4,7 @@
 
 pnpm workspace monorepo using TypeScript. This is **The Ritual AI** — a WhatsApp-first AI goal coaching SaaS where users interact via WhatsApp and get concise AI responses with links to a rich web dashboard.
 
-## Stack
+## Stack this is edit
 
 - **Monorepo tool**: pnpm workspaces
 - **Node.js version**: 24
