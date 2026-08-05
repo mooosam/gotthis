@@ -1,0 +1,40 @@
+=> ERROR [build 10/10] RUN pnpm run build                                                                         4.6s
+------
+ > [build 10/10] RUN pnpm run build:
+2.686
+2.686 > @workspace/web@0.0.0 build /app/artifacts/web
+2.686 > vite build --config vite.config.ts
+2.686
+4.015 failed to load config from /app/artifacts/web/vite.config.ts
+4.073 error during build:
+4.073 Error: PORT environment variable is required but was not provided.
+4.073     at file:///app/artifacts/web/node_modules/.vite-temp/vite.config.ts.timestamp-1785935143723-3d461d7242c338.mjs:10:9
+4.073     at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+4.073     at async node:internal/modules/esm/loader:643:26
+4.073     at async loadConfigFromBundledFile (file:///app/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35909:12)
+4.073     at async bundleAndLoadConfigFile (file:///app/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35797:17)
+4.073     at async loadConfigFromFile (file:///app/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35764:42)
+4.073     at async resolveConfig (file:///app/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35413:22)
+4.073     at async createBuilder (file:///app/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:33875:19)
+4.073     at async CAC.<anonymous> (file:///app/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/cli.js:629:10)
+4.206  ELIFECYCLE  Command failed with exit code 1.
+------
+[+] build 0/1
+ ⠙ Image gotthis-web Building                                                                                     132.1s
+Dockerfile:21
+
+--------------------
+
+  19 |
+
+  20 |     WORKDIR /app/artifacts/web
+
+  21 | >>> RUN pnpm run build
+
+  22 |
+
+  23 |     # ── Runtime stage ─────────────────────────────────────────────────────────────
+
+--------------------
+
+failed to solve: process "/bin/sh -c pnpm run build" did not complete successfully: exit code: 1

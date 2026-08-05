@@ -1,21 +1,15 @@
-# One-shot container that pushes the Drizzle schema to MySQL.
-# Runs before the API server starts; exits 0 on success.
-FROM node:24-alpine
+# One-shot container: pushes the Drizzle schema to MySQL then exits 0.
+# docker-compose runs this before the API server starts.
+FROM node:24-slim
 
 WORKDIR /app
 RUN npm install -g pnpm@10.26.1
 
-# Workspace manifests
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.base.json ./
-
-# Only the DB package (schema + drizzle-kit)
 COPY lib/db/ ./lib/db/
 
-# Install only @workspace/db and its deps (includes drizzle-kit devDep)
 RUN pnpm install --frozen-lockfile --filter @workspace/db
 
 WORKDIR /app/lib/db
-
-# drizzle-kit push reads DATABASE_URL from the environment
 CMD ["pnpm", "push"]

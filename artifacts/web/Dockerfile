@@ -1,5 +1,6 @@
 # ── Build stage ───────────────────────────────────────────────────────────────
-# Compiles the React/Vite app into static files.
+# node:24-slim (Debian/glibc) matches the libc used when the pnpm lockfile was
+# generated on Replit, so rollup's native binary resolves correctly.
 FROM node:24-slim AS build
 
 WORKDIR /app
@@ -10,23 +11,28 @@ COPY tsconfig.json tsconfig.base.json ./
 COPY lib/ ./lib/
 COPY artifacts/web/ ./artifacts/web/
 
+# --no-frozen-lockfile lets pnpm install the correct platform-specific optional
+# dep (e.g. @rollup/rollup-linux-x64-gnu) without the lockfile blocking it.
 RUN pnpm install --no-frozen-lockfile
 
-# VITE_CLERK_PUBLISHABLE_KEY must be available at build time —
-# it gets baked into the JS bundle by Vite.
+# These are needed at build time:
+#   VITE_CLERK_PUBLISHABLE_KEY — baked into the JS bundle by Vite
+#   PORT / BASE_PATH — read by vite.config.ts even during `vite build`
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+ENV PORT=3000
+ENV BASE_PATH=/
 
 WORKDIR /app/artifacts/web
 RUN pnpm run build
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # Serve the compiled static files with nginx.
+# vite.config.ts sets outDir to dist/public — copy from there.
 FROM nginx:alpine
 
-COPY --from=build /app/artifacts/web/dist /usr/share/nginx/html
+COPY --from=build /app/artifacts/web/dist/public /usr/share/nginx/html
 
-# SPA fallback: all unmatched paths → index.html so React Router works
 RUN printf 'server {\n\
   listen 3000;\n\
   root /usr/share/nginx/html;\n\
@@ -42,5 +48,4 @@ RUN printf 'server {\n\
 }\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 3000
-
 CMD ["nginx", "-g", "daemon off;"]
