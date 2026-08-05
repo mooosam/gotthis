@@ -3,7 +3,7 @@
 FROM node:24-alpine AS build
 
 WORKDIR /app
-RUN npm install -g pnpm@9
+RUN npm install -g pnpm@10.26.1
 
 # Workspace manifests — cached layer if only source changes
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -13,7 +13,7 @@ COPY tsconfig.json tsconfig.base.json ./
 COPY lib/ ./lib/
 COPY artifacts/api-server/ ./artifacts/api-server/
 
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile
 
 WORKDIR /app/artifacts/api-server
 RUN pnpm run build
@@ -25,7 +25,7 @@ RUN pnpm run build
 FROM node:24-alpine
 
 WORKDIR /app
-RUN npm install -g pnpm@9
+RUN npm install -g pnpm@10.26.1
 
 # Workspace manifests needed so pnpm can resolve workspace: references
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -34,7 +34,7 @@ COPY lib/ ./lib/
 COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
 
 # Install only production dependencies
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod
 
 # Compiled bundle from the build stage
 COPY --from=build /app/artifacts/api-server/dist ./artifacts/api-server/dist

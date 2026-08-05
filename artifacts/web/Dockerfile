@@ -3,7 +3,7 @@
 FROM node:24-alpine AS build
 
 WORKDIR /app
-RUN npm install -g pnpm@9
+RUN npm install -g pnpm@10.26.1
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.base.json ./
