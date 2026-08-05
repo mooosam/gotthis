@@ -3,7 +3,7 @@
 FROM node:24-alpine AS build
 
 WORKDIR /app
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Workspace manifests — cached layer if only source changes
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -25,7 +25,7 @@ RUN pnpm run build
 FROM node:24-alpine
 
 WORKDIR /app
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Workspace manifests needed so pnpm can resolve workspace: references
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./

@@ -3,7 +3,7 @@
 FROM node:24-alpine
 
 WORKDIR /app
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # Workspace manifests
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./

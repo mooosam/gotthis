@@ -3,14 +3,14 @@
 FROM node:24-alpine AS build
 
 WORKDIR /app
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.base.json ./
 COPY lib/ ./lib/
 COPY artifacts/web/ ./artifacts/web/
 
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile
 
 # VITE_CLERK_PUBLISHABLE_KEY must be available at build time —
 # it gets baked into the JS bundle by Vite.
