@@ -32,9 +32,38 @@ let sock: ReturnType<typeof makeWASocket> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPairingPhone: string | null = null;
 
-// Track message IDs that the bot itself sent, so we can ignore their echo
-// in messages.upsert without dropping genuine user self-messages.
-const botSentIds = new Set<string>();
+// ---------------------------------------------------------------------------
+// Bounded TTL cache for message IDs.
+// Serves two purposes:
+//   1. Deduplication — Baileys can re-emit messages.upsert on reconnect; we
+//      skip any message ID we've already processed.
+//   2. Bot-echo suppression — replaces the old unbounded botSentIds Set.
+// Entries expire after CACHE_TTL_MS; a cleanup sweep runs every SWEEP_MS.
+// ---------------------------------------------------------------------------
+const CACHE_TTL_MS = 10 * 60 * 1000;  // 10 minutes
+const SWEEP_MS     =  5 * 60 * 1000;  //  5 minutes
+
+/** "processed" = we handled this as an inbound message; "bot" = we sent it. */
+const msgCache = new Map<string, { at: number; kind: "processed" | "bot" }>();
+
+function cacheHas(id: string): boolean {
+  const entry = msgCache.get(id);
+  if (!entry) return false;
+  if (Date.now() - entry.at > CACHE_TTL_MS) { msgCache.delete(id); return false; }
+  return true;
+}
+
+function cacheSet(id: string, kind: "processed" | "bot"): void {
+  msgCache.set(id, { at: Date.now(), kind });
+}
+
+// Periodic sweep — prune entries older than TTL so the Map stays bounded.
+setInterval(() => {
+  const cutoff = Date.now() - CACHE_TTL_MS;
+  for (const [id, entry] of msgCache) {
+    if (entry.at < cutoff) msgCache.delete(id);
+  }
+}, SWEEP_MS).unref(); // .unref() so this timer never prevents process exit
 
 export function getQR(): string | null {
   return currentQR;
@@ -68,7 +97,7 @@ async function findUserByPhone(phone: string, jid: string): Promise<User | null>
 
 async function sendTracked(jid: string, text: string): Promise<void> {
   const result = await sock?.sendMessage(jid, { text });
-  if (result?.key?.id) botSentIds.add(result.key.id);
+  if (result?.key?.id) cacheSet(result.key.id, "bot");
 }
 
 export async function sendToJid(jid: string, text: string): Promise<void> {
@@ -263,10 +292,12 @@ async function connect(phoneForPairing?: string): Promise<void> {
       // fromMe=true covers both the bot's own replies and any message the
       // account owner sends from their phone to someone else — both must be
       // ignored so we don't reply in unrelated chats.
-      if (msg.key.fromMe) {
-        botSentIds.delete(msgId);
-        continue;
-      }
+      if (msg.key.fromMe) continue;
+
+      // Deduplicate: Baileys re-emits messages.upsert after every reconnect.
+      // Skip any message ID we've already processed or sent ourselves.
+      if (cacheHas(msgId)) continue;
+      cacheSet(msgId, "processed");
 
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;

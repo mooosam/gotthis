@@ -4,32 +4,15 @@ import { startWhatsApp, sendToJid } from "./lib/whatsapp/service.js";
 import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
 import { startNewsletterCron } from "./lib/email/newsletter.js";
 import { startDailyResetCron } from "./lib/goals/daily-reset.js";
+import { startStripeReconcileCron } from "./lib/stripe-reconcile.js";
+import { startCleanupCron } from "./lib/cleanup.js";
 import { seedDefaultPlans } from "./lib/seed-plans.js";
-import { runMigrations } from "stripe-replit-sync";
-import { getStripeSync } from "./stripeClient";
 
 // Catch unhandled promise rejections (e.g. from Baileys reconnect timers) so
 // they are logged rather than crashing the process in Node 15+.
 process.on("unhandledRejection", (reason) => {
   logger.error({ err: reason }, "Unhandled promise rejection — keeping process alive");
 });
-
-async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) return;
-  try {
-    await runMigrations({ databaseUrl });
-    const stripeSync = await getStripeSync();
-    const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
-    await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
-    stripeSync.syncBackfill()
-      .then(() => logger.info("Stripe backfill complete"))
-      .catch((err) => logger.warn({ err }, "Stripe backfill failed"));
-    logger.info("Stripe initialized");
-  } catch (err) {
-    logger.warn({ err }, "Stripe init skipped — connect the Stripe integration to enable payments");
-  }
-}
 
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
@@ -54,8 +37,6 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-await initStripe();
-
 app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
@@ -75,4 +56,6 @@ app.listen(port, (err) => {
   startWeeklyChartCron(sendToJid);
   startNewsletterCron();
   startDailyResetCron();
+  startStripeReconcileCron();
+  startCleanupCron();
 });

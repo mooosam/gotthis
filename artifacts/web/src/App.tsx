@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser, useAuth } from '@clerk/react';
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from 'wouter';
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { setTokenGetter } from "./lib/api";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
@@ -52,7 +53,7 @@ function SignInPage() {
         routing="path"
         path={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
-        afterSignInUrl={`${basePath}/dashboard`}
+        fallbackRedirectUrl={`${basePath}/dashboard`}
       />
     </div>
   );
@@ -65,7 +66,7 @@ function SignUpPage() {
         routing="path"
         path={`${basePath}/sign-up`}
         signInUrl={`${basePath}/sign-in`}
-        afterSignUpUrl={`${basePath}/onboarding`}
+        fallbackRedirectUrl={`${basePath}/onboarding`}
       />
     </div>
   );
@@ -111,6 +112,32 @@ function HomePage() {
   const { isSignedIn, isLoaded } = useUser();
   if (isLoaded && isSignedIn) return <Redirect to="/dashboard" />;
   return <LandingPage />;
+}
+
+/**
+ * Wraps admin-only routes. Fetches the user from our own API (not Clerk)
+ * because isAdmin lives in our DB, not in the Clerk session.
+ * Redirects non-admins to "/" silently — the API enforces this too, but
+ * this prevents the page shell from rendering for a regular signed-in user.
+ */
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { isSignedIn, isLoaded } = useUser();
+  const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    import("./lib/api").then(({ apiFetch }) =>
+      apiFetch("/api/users/me")
+        .then((r) => r.json())
+        .then((u: { isAdmin?: boolean }) => setIsAdmin(u.isAdmin === true))
+        .catch(() => setIsAdmin(false)),
+    );
+  }, [isLoaded, isSignedIn]);
+
+  if (!isLoaded || !isSignedIn) return <Redirect to="/" />;
+  if (isAdmin === null) return null; // loading — render nothing briefly
+  if (!isAdmin) return <Redirect to="/" />;
+  return <>{children}</>;
 }
 
 function ClerkProviderWithRoutes() {
@@ -189,32 +216,25 @@ function ClerkProviderWithRoutes() {
           </Route>
 
           <Route path="/admin">
-            <Show when="signed-in"><AdminOverviewPage /></Show>
-            <Show when="signed-out"><Redirect to="/" /></Show>
+            <AdminGuard><AdminOverviewPage /></AdminGuard>
           </Route>
 
           <Route path="/admin/users">
-            <Show when="signed-in"><AdminUsersPage /></Show>
-            <Show when="signed-out"><Redirect to="/" /></Show>
+            <AdminGuard><AdminUsersPage /></AdminGuard>
           </Route>
 
           <Route path="/admin/users/:id">
             {(params) => (
-              <>
-                <Show when="signed-in"><AdminUserDetailPage id={params.id} /></Show>
-                <Show when="signed-out"><Redirect to="/" /></Show>
-              </>
+              <AdminGuard><AdminUserDetailPage id={params.id} /></AdminGuard>
             )}
           </Route>
 
           <Route path="/admin/plans">
-            <Show when="signed-in"><AdminPlansPage /></Show>
-            <Show when="signed-out"><Redirect to="/" /></Show>
+            <AdminGuard><AdminPlansPage /></AdminGuard>
           </Route>
 
           <Route path="/admin/stripe">
-            <Show when="signed-in"><AdminStripePage /></Show>
-            <Show when="signed-out"><Redirect to="/" /></Show>
+            <AdminGuard><AdminStripePage /></AdminGuard>
           </Route>
 
           <Route component={NotFound} />
@@ -226,12 +246,14 @@ function ClerkProviderWithRoutes() {
 
 function App() {
   return (
-    <TooltipProvider>
-      <WouterRouter base={basePath}>
-        <ClerkProviderWithRoutes />
-      </WouterRouter>
-      <Toaster />
-    </TooltipProvider>
+    <ErrorBoundary>
+      <TooltipProvider>
+        <WouterRouter base={basePath}>
+          <ClerkProviderWithRoutes />
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </ErrorBoundary>
   );
 }
 
