@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   date,
   json,
   timestamp,
@@ -13,8 +14,8 @@ import { usersTable } from "./users";
 export const dailyLogsTable = mysqlTable(
   "daily_logs",
   {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    userId: varchar("user_id", { length: 255 })
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     logDate: date("log_date").notNull(),

@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   int,
   boolean,
   timestamp,
@@ -11,11 +12,11 @@ import { usersTable } from "./users";
 import { goalsTable } from "./goals";
 
 export const milestonesTable = mysqlTable("milestones", {
-  id: text("id").primaryKey(),
-  goalId: text("goal_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  goalId: varchar("goal_id", { length: 255 })
     .notNull()
     .references(() => goalsTable.id, { onDelete: "cascade" }),
-  userId: text("user_id")
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),

@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   timestamp,
 } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -8,11 +9,11 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 
 export const emailMessagesTable = mysqlTable("email_messages", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
-  messageId: text("message_id").notNull().unique(),
+  messageId: varchar("message_id", { length: 255 }).notNull().unique(),
   subject: text("subject").notNull(),
   emailType: text("email_type").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

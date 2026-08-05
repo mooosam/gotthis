@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   int,
   boolean,
   timestamp,
@@ -10,7 +11,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const usersTable = mysqlTable("users", {
-  id: text("id").primaryKey(),
+  id: varchar("id", { length: 255 }).primaryKey(),
   email: text("email").notNull(),
   phoneHash: text("phone_hash"),
   whatsappJid: text("whatsapp_jid"),

@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   json,
   timestamp,
 } from "drizzle-orm/mysql-core";
@@ -9,8 +10,8 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 
 export const memorySummariesTable = mysqlTable("memory_summaries", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .unique()
     .references(() => usersTable.id, { onDelete: "cascade" }),

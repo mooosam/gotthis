@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   int,
   boolean,
   timestamp,
@@ -11,11 +12,11 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 
 export const goalsTable = mysqlTable("goals", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .references(() => usersTable.id, { onDelete: "cascade" }),
-  parentGoalId: text("parent_goal_id").references((): AnyMySqlColumn => goalsTable.id, {
+  parentGoalId: varchar("parent_goal_id", { length: 255 }).references((): AnyMySqlColumn => goalsTable.id, {
     onDelete: "set null",
   }),
   title: text("title").notNull(),

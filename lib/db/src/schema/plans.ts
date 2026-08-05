@@ -1,6 +1,7 @@
 import {
   mysqlTable,
   text,
+  varchar,
   int,
   boolean,
   timestamp,
@@ -9,7 +10,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const plansTable = mysqlTable("plans", {
-  slug: text("slug").primaryKey(),
+  slug: varchar("slug", { length: 255 }).primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   dailyMessageCap: int("daily_message_cap").notNull().default(5),
