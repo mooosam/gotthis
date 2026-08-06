@@ -40,8 +40,8 @@ let pendingPairingPhone: string | null = null;
 //   2. Bot-echo suppression — replaces the old unbounded botSentIds Set.
 // Entries expire after CACHE_TTL_MS; a cleanup sweep runs every SWEEP_MS.
 // ---------------------------------------------------------------------------
-const CACHE_TTL_MS = 10 * 60 * 1000;  // 10 minutes
-const SWEEP_MS     =  5 * 60 * 1000;  //  5 minutes
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const SWEEP_MS = 5 * 60 * 1000; //  5 minutes
 
 /** "processed" = we handled this as an inbound message; "bot" = we sent it. */
 const msgCache = new Map<string, { at: number; kind: "processed" | "bot" }>();
@@ -49,10 +49,18 @@ const msgCache = new Map<string, { at: number; kind: "processed" | "bot" }>();
 function cacheHas(id: string): boolean {
   const entry = msgCache.get(id);
   if (!entry) return false;
-  if (Date.now() - entry.at > CACHE_TTL_MS) { msgCache.delete(id); return false; }
+  if (Date.now() - entry.at > CACHE_TTL_MS) {
+    msgCache.delete(id);
+    return false;
+  }
   return true;
 }
-
+function clearAuthDir() {
+  if (!fs.existsSync(AUTH_DIR)) return;
+  for (const entry of fs.readdirSync(AUTH_DIR)) {
+    fs.rmSync(path.join(AUTH_DIR, entry), { recursive: true, force: true });
+  }
+}
 function cacheSet(id: string, kind: "processed" | "bot"): void {
   msgCache.set(id, { at: Date.now(), kind });
 }
@@ -81,7 +89,10 @@ export function getConnectedPhone(): string | null {
   return connectedPhone;
 }
 
-async function findUserByPhone(phone: string, jid: string): Promise<User | null> {
+async function findUserByPhone(
+  phone: string,
+  jid: string,
+): Promise<User | null> {
   const hashed = hashPhone(phone);
   const [user] = await db
     .select()
@@ -89,7 +100,10 @@ async function findUserByPhone(phone: string, jid: string): Promise<User | null>
     .where(eq(usersTable.phoneHash, hashed));
 
   if (user && user.whatsappJid !== jid) {
-    await db.update(usersTable).set({ whatsappJid: jid }).where(eq(usersTable.id, user.id));
+    await db
+      .update(usersTable)
+      .set({ whatsappJid: jid })
+      .where(eq(usersTable.id, user.id));
   }
 
   return user ?? null;
@@ -118,7 +132,11 @@ async function sendWelcomeSequence(jid: string): Promise<void> {
   }
 }
 
-async function handleIncomingMessage(jid: string, phone: string, text: string): Promise<void> {
+async function handleIncomingMessage(
+  jid: string,
+  phone: string,
+  text: string,
+): Promise<void> {
   const user = await findUserByPhone(phone, jid);
 
   if (!user) {
@@ -128,7 +146,10 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
 
   if (!user.onboardingCompleted) {
     const base = getBaseUrl();
-    await sendTracked(jid, `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`);
+    await sendTracked(
+      jid,
+      `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`,
+    );
     return;
   }
 
@@ -141,7 +162,10 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
     const upgradeHint = budgetCheck.upgradePrompt
       ? `\n\n👉 Upgrade now: ${base}/pricing`
       : "";
-    await sendTracked(jid, (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint);
+    await sendTracked(
+      jid,
+      (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint,
+    );
     return;
   }
 
@@ -176,7 +200,10 @@ async function handleIncomingMessage(jid: string, phone: string, text: string): 
           : "View your full review";
       reply = `${reply}\n\n${linkLabel}: ${reviewUrl}`;
     } catch (linkErr) {
-      logger.warn({ err: linkErr }, "Failed to generate magic link for WhatsApp response");
+      logger.warn(
+        { err: linkErr },
+        "Failed to generate magic link for WhatsApp response",
+      );
     }
   }
 
@@ -206,7 +233,9 @@ async function connect(phoneForPairing?: string): Promise<void> {
     version,
     auth: state,
     printQRInTerminal: !usePairingCode,
-    logger: logger.child({ module: "baileys" }) as Parameters<typeof makeWASocket>[0]["logger"],
+    logger: logger.child({ module: "baileys" }) as Parameters<
+      typeof makeWASocket
+    >[0]["logger"],
     browser: ["The Ritual AI", "Chrome", "1.0.0"],
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,
@@ -221,106 +250,127 @@ async function connect(phoneForPairing?: string): Promise<void> {
         const code = await sock!.requestPairingCode(normalised);
         pairingCode = code;
         pendingPairingPhone = phoneForPairing;
-        logger.info({ phone: normalised.slice(-4) + "****" }, "Pairing code generated");
+        logger.info(
+          { phone: normalised.slice(-4) + "****" },
+          "Pairing code generated",
+        );
       } catch (err) {
         logger.error({ err }, "Failed to request pairing code");
       }
     }, 3000);
   }
 
-  sock.ev.on("connection.update", async (update: BaileysEventMap["connection.update"]) => {
-    const { connection, lastDisconnect, qr } = update;
+  sock.ev.on(
+    "connection.update",
+    async (update: BaileysEventMap["connection.update"]) => {
+      const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-      currentQR = qr;
-      currentStatus = "connecting";
-      logger.info("WhatsApp QR code updated — scan to connect");
-    }
-
-    if (connection === "close") {
-      currentStatus = "disconnected";
-      currentQR = null;
-      pairingCode = null;
-      pendingPairingPhone = null;
-      connectedPhone = null;
-      const reason = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
-      const shouldReconnect = reason !== DisconnectReason.loggedOut;
-
-      logger.warn({ reason }, "WhatsApp connection closed");
-
-      if (shouldReconnect) {
-        reconnectTimer = setTimeout(() => {
-          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect failed"));
-        }, 5000);
-      } else {
-        logger.info("WhatsApp logged out — clearing auth state");
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-        // Reconnect with fresh state so a new QR / pairing code is generated
-        reconnectTimer = setTimeout(() => {
-          connect().catch((err) => logger.error({ err }, "WhatsApp reconnect (fresh) failed"));
-        }, 3000);
+      if (qr) {
+        currentQR = qr;
+        currentStatus = "connecting";
+        logger.info("WhatsApp QR code updated — scan to connect");
       }
-    }
 
-    if (connection === "open") {
-      // Clear any queued reconnect from a prior close — otherwise it could
-      // fire mid-connection and create a leaked socket.
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+      if (connection === "close") {
+        currentStatus = "disconnected";
+        currentQR = null;
+        pairingCode = null;
+        pendingPairingPhone = null;
+        connectedPhone = null;
+        const reason = (
+          lastDisconnect?.error as { output?: { statusCode?: number } }
+        )?.output?.statusCode;
+        const shouldReconnect = reason !== DisconnectReason.loggedOut;
+
+        logger.warn({ reason }, "WhatsApp connection closed");
+
+        if (shouldReconnect) {
+          reconnectTimer = setTimeout(() => {
+            connect().catch((err) =>
+              logger.error({ err }, "WhatsApp reconnect failed"),
+            );
+          }, 5000);
+        } else {
+          logger.info("WhatsApp logged out — clearing auth state");
+          clearAuthDir();
+          // Reconnect with fresh state so a new QR / pairing code is generated
+          reconnectTimer = setTimeout(() => {
+            connect().catch((err) =>
+              logger.error({ err }, "WhatsApp reconnect (fresh) failed"),
+            );
+          }, 3000);
+        }
       }
-      currentStatus = "open";
-      currentQR = null;
-      pairingCode = null;
-      pendingPairingPhone = null;
-      // Extract connected phone number from the socket user JID
-      const rawJid = sock?.user?.id ?? "";
-      connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
-      logger.info({ connectedPhone }, "WhatsApp connected");
-    }
-  });
 
-  sock.ev.on("messages.upsert", async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
-    if (type !== "notify") return;
-
-    for (const msg of messages) {
-      if (!msg.message) continue;
-
-      const msgId = msg.key.id ?? "";
-
-      // Only process messages sent TO this number, never FROM it.
-      // fromMe=true covers both the bot's own replies and any message the
-      // account owner sends from their phone to someone else — both must be
-      // ignored so we don't reply in unrelated chats.
-      if (msg.key.fromMe) continue;
-
-      // Deduplicate: Baileys re-emits messages.upsert after every reconnect.
-      // Skip any message ID we've already processed or sent ourselves.
-      if (cacheHas(msgId)) continue;
-      cacheSet(msgId, "processed");
-
-      const jid = msg.key.remoteJid;
-      if (!jid || jid.endsWith("@g.us")) continue;
-
-      const phone = jidToPhone(jid);
-
-      const text =
-        msg.message.conversation ??
-        msg.message.extendedTextMessage?.text ??
-        "";
-
-      if (!text.trim()) continue;
-
-      logger.info({ phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe }, "Incoming WhatsApp message");
-
-      try {
-        await handleIncomingMessage(jid, phone, text);
-      } catch (err) {
-        logger.error({ err }, "Error handling WhatsApp message");
-        await sendTracked(jid, "Something went wrong. Please try again in a moment.");
+      if (connection === "open") {
+        // Clear any queued reconnect from a prior close — otherwise it could
+        // fire mid-connection and create a leaked socket.
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        currentStatus = "open";
+        currentQR = null;
+        pairingCode = null;
+        pendingPairingPhone = null;
+        // Extract connected phone number from the socket user JID
+        const rawJid = sock?.user?.id ?? "";
+        connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
+        logger.info({ connectedPhone }, "WhatsApp connected");
       }
-    }
-  });
+    },
+  );
+
+  sock.ev.on(
+    "messages.upsert",
+    async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
+      if (type !== "notify") return;
+
+      for (const msg of messages) {
+        if (!msg.message) continue;
+
+        const msgId = msg.key.id ?? "";
+
+        // Only process messages sent TO this number, never FROM it.
+        // fromMe=true covers both the bot's own replies and any message the
+        // account owner sends from their phone to someone else — both must be
+        // ignored so we don't reply in unrelated chats.
+        if (msg.key.fromMe) continue;
+
+        // Deduplicate: Baileys re-emits messages.upsert after every reconnect.
+        // Skip any message ID we've already processed or sent ourselves.
+        if (cacheHas(msgId)) continue;
+        cacheSet(msgId, "processed");
+
+        const jid = msg.key.remoteJid;
+        if (!jid || jid.endsWith("@g.us")) continue;
+
+        const phone = jidToPhone(jid);
+
+        const text =
+          msg.message.conversation ??
+          msg.message.extendedTextMessage?.text ??
+          "";
+
+        if (!text.trim()) continue;
+
+        logger.info(
+          { phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe },
+          "Incoming WhatsApp message",
+        );
+
+        try {
+          await handleIncomingMessage(jid, phone, text);
+        } catch (err) {
+          logger.error({ err }, "Error handling WhatsApp message");
+          await sendTracked(
+            jid,
+            "Something went wrong. Please try again in a moment.",
+          );
+        }
+      }
+    },
+  );
 }
 
 export async function startWhatsApp(): Promise<void> {
@@ -351,11 +401,18 @@ export async function requestPairingCode(phone: string): Promise<string> {
     const poll = setInterval(() => {
       if (pairingCode) {
         clearInterval(poll);
-        logger.info({ phone: phone.replace(/\D/g, "").slice(-4) + "****" }, "Pairing code issued");
+        logger.info(
+          { phone: phone.replace(/\D/g, "").slice(-4) + "****" },
+          "Pairing code issued",
+        );
         resolve(pairingCode);
       } else if (Date.now() > deadline) {
         clearInterval(poll);
-        reject(new Error("Timed out waiting for pairing code — check the phone number and try again"));
+        reject(
+          new Error(
+            "Timed out waiting for pairing code — check the phone number and try again",
+          ),
+        );
       }
     }, 250);
   });
@@ -375,6 +432,6 @@ export async function disconnectWhatsApp(): Promise<void> {
   pairingCode = null;
   pendingPairingPhone = null;
   if (fs.existsSync(AUTH_DIR)) {
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    clearAuthDir();
   }
 }
