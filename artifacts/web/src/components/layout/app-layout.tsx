@@ -20,21 +20,21 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 
 const CATEGORY_COLORS: Record<string, string> = {
-  fitness:      "#22C55E",
-  health:       "#22C55E",
-  wellness:     "#22C55E",
-  writing:      "#3B82F6",
-  work:         "#3B82F6",
-  career:       "#3B82F6",
+  fitness: "#22C55E",
+  health: "#22C55E",
+  wellness: "#22C55E",
+  writing: "#3B82F6",
+  work: "#3B82F6",
+  career: "#3B82F6",
   productivity: "#3B82F6",
-  reading:      "#EAB308",
-  learning:     "#EAB308",
-  education:    "#EAB308",
-  finance:      "#F97316",
-  money:        "#F97316",
-  mindfulness:  "#A855F7",
-  meditation:   "#A855F7",
-  social:       "#EC4899",
+  reading: "#EAB308",
+  learning: "#EAB308",
+  education: "#EAB308",
+  finance: "#F97316",
+  money: "#F97316",
+  mindfulness: "#A855F7",
+  meditation: "#A855F7",
+  social: "#EC4899",
 };
 
 function getCategoryColor(category: string): string {
@@ -68,14 +68,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar
         className="hidden md:flex w-52 flex-col border-r border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar"
         isAdmin={profile?.isAdmin === true}
-        whatsappConnected={!!profile?.whatsappNumber}
+        whatsappConnected={!!profile?.phoneHash}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <MobileNav isAdmin={profile?.isAdmin === true} />
         <main className="flex-1 overflow-auto p-6 md:p-10">
-          <div className="max-w-5xl mx-auto">
-            {children}
-          </div>
+          <div className="max-w-5xl mx-auto">{children}</div>
         </main>
       </div>
     </div>
@@ -92,7 +90,9 @@ function SidebarLogoutButton() {
       style={{ fontSize: 14, color: "#9CA3AF" }}
     >
       <LogOut className="h-[14px] w-[14px] flex-shrink-0 group-hover:text-red-500 transition-colors" />
-      <span className="group-hover:text-red-500 transition-colors">Log out</span>
+      <span className="group-hover:text-red-500 transition-colors">
+        Log out
+      </span>
     </button>
   );
 }
@@ -110,11 +110,14 @@ function Sidebar({
   const { data: goalsData } = useListGoals();
 
   const navItems = [
-    { href: "/dashboard",                                              label: "Dashboard" },
-    { href: "/goals",                                                  label: "Goals"     },
-    { href: `/review/${new Date().toISOString().split("T")[0]}`,       label: "Review"    },
-    { href: "/whatsapp",                                               label: "WhatsApp"  },
-    { href: "/account",                                                label: "Settings"  },
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/goals", label: "Goals" },
+    {
+      href: `/review/${new Date().toISOString().split("T")[0]}`,
+      label: "Review",
+    },
+    { href: "/whatsapp", label: "WhatsApp" },
+    { href: "/account", label: "Settings" },
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 
@@ -122,8 +125,8 @@ function Sidebar({
     new Map(
       (goalsData?.goals ?? [])
         .filter((g) => g.status === "active" && g.category)
-        .map((g) => [g.category.toLowerCase(), g.category])
-    ).values()
+        .map((g) => [g.category.toLowerCase(), g.category]),
+    ).values(),
   ).slice(0, 6);
 
   return (
@@ -136,7 +139,8 @@ function Sidebar({
         {navItems.map((item) => {
           const isActive =
             location === item.href ||
-            (item.href.startsWith("/review/") && location.startsWith("/review/")) ||
+            (item.href.startsWith("/review/") &&
+              location.startsWith("/review/")) ||
             (item.href === "/admin" && location.startsWith("/admin"));
           return (
             <Link key={item.href} href={item.href}>
@@ -144,20 +148,22 @@ function Sidebar({
                 data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
                 className="flex items-center gap-2.5 px-2.5 py-[6px] rounded-lg mb-[2px] cursor-pointer transition-colors"
                 style={{
-                  fontWeight:  isActive ? 600 : 400,
-                  fontSize:    14,
-                  color:       isActive ? "var(--sidebar-active-text, #111827)" : "#6B7280",
-                  background:  isActive ? "#F3F4F6"                             : "transparent",
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: 14,
+                  color: isActive
+                    ? "var(--sidebar-active-text, #111827)"
+                    : "#6B7280",
+                  background: isActive ? "#F3F4F6" : "transparent",
                 }}
               >
                 <span
                   style={{
-                    width:        6,
-                    height:       6,
+                    width: 6,
+                    height: 6,
                     borderRadius: 1.5,
-                    background:   isActive ? "#111827" : "#D1D5DB",
-                    flexShrink:   0,
-                    display:      "inline-block",
+                    background: isActive ? "#111827" : "#D1D5DB",
+                    flexShrink: 0,
+                    display: "inline-block",
                   }}
                 />
                 {item.label}
@@ -170,12 +176,12 @@ function Sidebar({
           <div style={{ marginTop: 24, marginBottom: 8 }}>
             <div
               style={{
-                fontSize:      10,
-                fontWeight:    700,
+                fontSize: 10,
+                fontWeight: 700,
                 letterSpacing: "0.1em",
-                color:         "#9CA3AF",
-                padding:       "0 10px",
-                marginBottom:  8,
+                color: "#9CA3AF",
+                padding: "0 10px",
+                marginBottom: 8,
                 textTransform: "uppercase",
               }}
             >
@@ -189,12 +195,12 @@ function Sidebar({
                 >
                   <span
                     style={{
-                      width:        7,
-                      height:       7,
+                      width: 7,
+                      height: 7,
                       borderRadius: "50%",
-                      background:   getCategoryColor(cat),
-                      flexShrink:   0,
-                      display:      "inline-block",
+                      background: getCategoryColor(cat),
+                      flexShrink: 0,
+                      display: "inline-block",
                     }}
                   />
                   <span style={{ textTransform: "capitalize" }}>{cat}</span>
@@ -228,8 +234,14 @@ function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
   }
 
   const initials = user.fullName
-    ? user.fullName.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()
-    : user.primaryEmailAddress?.emailAddress?.substring(0, 2).toUpperCase() ?? "U";
+    ? user.fullName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .substring(0, 2)
+        .toUpperCase()
+    : (user.primaryEmailAddress?.emailAddress?.substring(0, 2).toUpperCase() ??
+      "U");
 
   return (
     <DropdownMenu>
@@ -249,25 +261,27 @@ function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
               className="font-semibold truncate"
               style={{ fontSize: 14, color: "#111827", maxWidth: 120 }}
             >
-              {user.fullName || user.primaryEmailAddress?.emailAddress?.split("@")[0] || "User"}
+              {user.fullName ||
+                user.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+                "User"}
             </span>
           </div>
           <div className="flex items-center gap-1.5 mt-1.5 pl-[42px]">
             <span
               style={{
-                width:        7,
-                height:       7,
+                width: 7,
+                height: 7,
                 borderRadius: "50%",
-                background:   whatsappConnected ? "#22C55E" : "#D1D5DB",
-                display:      "inline-block",
-                flexShrink:   0,
+                background: whatsappConnected ? "#22C55E" : "#D1D5DB",
+                display: "inline-block",
+                flexShrink: 0,
               }}
             />
             <span
               style={{
-                fontSize:   12,
+                fontSize: 12,
                 fontWeight: 500,
-                color:      whatsappConnected ? "#16A34A" : "#9CA3AF",
+                color: whatsappConnected ? "#16A34A" : "#9CA3AF",
               }}
             >
               {whatsappConnected ? "Connected" : "Not connected"}
@@ -275,7 +289,12 @@ function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
           </div>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="bottom" className="w-52" data-testid="user-menu-content">
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        className="w-52"
+        data-testid="user-menu-content"
+      >
         <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
           {user.primaryEmailAddress?.emailAddress}
         </DropdownMenuLabel>
@@ -293,7 +312,11 @@ function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
           className="cursor-pointer"
           data-testid="user-menu-theme"
         >
-          {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+          {theme === "dark" ? (
+            <Sun className="mr-2 h-4 w-4" />
+          ) : (
+            <Moon className="mr-2 h-4 w-4" />
+          )}
           {theme === "dark" ? "Light mode" : "Dark mode"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -313,7 +336,12 @@ function ProfileButton({ whatsappConnected }: { whatsappConnected: boolean }) {
 function MobileNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <header className="flex md:hidden h-14 items-center justify-between px-4 border-b border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar">
-      <span className="text-base font-semibold tracking-tight" style={{ color: "#111827" }}>GotThis</span>
+      <span
+        className="text-base font-semibold tracking-tight"
+        style={{ color: "#111827" }}
+      >
+        GotThis
+      </span>
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="md:hidden">
@@ -321,8 +349,15 @@ function MobileNav({ isAdmin }: { isAdmin: boolean }) {
             <span className="sr-only">Toggle menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-52 p-0 bg-white dark:bg-sidebar border-r border-[#EBEBEB] dark:border-border">
-          <Sidebar className="flex h-full flex-col" isAdmin={isAdmin} whatsappConnected={false} />
+        <SheetContent
+          side="left"
+          className="w-52 p-0 bg-white dark:bg-sidebar border-r border-[#EBEBEB] dark:border-border"
+        >
+          <Sidebar
+            className="flex h-full flex-col"
+            isAdmin={isAdmin}
+            whatsappConnected={false}
+          />
         </SheetContent>
       </Sheet>
     </header>

@@ -335,7 +335,16 @@ async function connect(phoneForPairing?: string): Promise<void> {
         // fromMe=true covers both the bot's own replies and any message the
         // account owner sends from their phone to someone else — both must be
         // ignored so we don't reply in unrelated chats.
-        if (msg.key.fromMe) continue;
+        if (msg.key.fromMe) {
+          const ownJid = sock?.user?.id;
+          const ownPhone = ownJid ? jidToPhone(ownJid).split(":")[0] : null;
+          const remotePhone = msg.key.remoteJid
+            ? jidToPhone(msg.key.remoteJid).split(":")[0]
+            : null;
+          const isSelfChat = !!ownPhone && ownPhone === remotePhone;
+          if (!isSelfChat) continue;
+        }
+        //if (msg.key.fromMe) continue;
 
         // Deduplicate: Baileys re-emits messages.upsert after every reconnect.
         // Skip any message ID we've already processed or sent ourselves.
