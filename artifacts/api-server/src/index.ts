@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startWhatsApp, sendToJid } from "./lib/whatsapp/service.js";
+import { sendToJid } from "./lib/whatsapp/service.js";
 import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
 import { startNewsletterCron } from "./lib/email/newsletter.js";
 import { startDailyResetCron } from "./lib/goals/daily-reset.js";
@@ -8,8 +8,7 @@ import { startStripeReconcileCron } from "./lib/stripe-reconcile.js";
 import { startCleanupCron } from "./lib/cleanup.js";
 import { seedDefaultPlans } from "./lib/seed-plans.js";
 
-// Catch unhandled promise rejections (e.g. from Baileys reconnect timers) so
-// they are logged rather than crashing the process in Node 15+.
+// Catch unhandled promise rejections so they are logged rather than crashing the process in Node 15+.
 process.on("unhandledRejection", (reason) => {
   logger.error({ err: reason }, "Unhandled promise rejection — keeping process alive");
 });
@@ -47,10 +46,6 @@ app.listen(port, (err) => {
 
   seedDefaultPlans().catch((seedErr) => {
     logger.warn({ err: seedErr }, "Plan seed failed");
-  });
-
-  startWhatsApp().catch((startErr) => {
-    logger.error({ err: startErr }, "WhatsApp service failed to start");
   });
 
   startWeeklyChartCron(sendToJid);

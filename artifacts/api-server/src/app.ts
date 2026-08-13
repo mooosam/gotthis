@@ -10,8 +10,63 @@ import {
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { handleBillingWebhook } from "./routes/billing";
+import {
+  verifyWebhookChallenge,
+  verifyCloudApiSignature,
+  processWebhookPayload,
+} from "./lib/whatsapp/service.js";
 
 const app: Express = express();
+
+// WhatsApp Cloud API webhook verification handshake. Meta calls this once
+// (as a GET) when you save the Callback URL + Verify Token in the app
+// dashboard. No signature to check here — just echo back hub.challenge.
+app.get("/api/whatsapp/webhook", (req, res) => {
+  const mode = req.query["hub.mode"] as string | undefined;
+  const token = req.query["hub.verify_token"] as string | undefined;
+  const challenge = req.query["hub.challenge"] as string | undefined;
+  const result = verifyWebhookChallenge(mode, token, challenge);
+  if (result !== null) {
+    res.status(200).send(result);
+  } else {
+    logger.warn("WhatsApp webhook verification failed");
+    res.sendStatus(403);
+  }
+});
+
+// WhatsApp Cloud API webhook events (incoming messages, delivery statuses).
+// MUST be registered before express.json() — signature verification needs
+// the raw, untouched request body. Configure this same URL as the Callback
+// URL in the Meta app dashboard.
+app.post(
+  "/api/whatsapp/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
+    const signature = req.headers["x-hub-signature-256"];
+    const sig = Array.isArray(signature) ? signature[0] : signature;
+    if (!verifyCloudApiSignature(req.body as Buffer, sig)) {
+      logger.warn("Invalid WhatsApp webhook signature");
+      res.sendStatus(401);
+      return;
+    }
+
+    // Acknowledge immediately — Meta retries aggressively if it doesn't get
+    // a fast 200, which would otherwise cause duplicate processing.
+    res.sendStatus(200);
+
+    let payload: Parameters<typeof processWebhookPayload>[0];
+    try {
+      payload = JSON.parse((req.body as Buffer).toString("utf8"));
+    } catch (err) {
+      logger.error({ err }, "Failed to parse WhatsApp webhook payload");
+      return;
+    }
+
+    processWebhookPayload(payload).catch((err) => {
+      logger.error({ err }, "Error processing WhatsApp webhook payload");
+    });
+  },
+);
 
 // Webhook route MUST be registered before express.json() — Stripe requires the raw body.
 // Configure https://gotthis.one/api/billing/webhook as the endpoint in Stripe dashboard.

@@ -1,11 +1,4 @@
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} from "@whiskeysockets/baileys";
-import type { BaileysEventMap } from "@whiskeysockets/baileys";
-import path from "node:path";
-import fs from "node:fs";
+import crypto from "node:crypto";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPhone } from "../phone.js";
@@ -16,146 +9,168 @@ import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
 import type { User } from "@workspace/db";
 
-const AUTH_DIR = path.resolve(process.cwd(), ".whatsapp-auth");
-
-function jidToPhone(jid: string): string {
-  return jid.split("@")[0];
-}
-
-export type WAStatus = "disconnected" | "connecting" | "open";
-
-let currentQR: string | null = null;
-let pairingCode: string | null = null;
-let currentStatus: WAStatus = "disconnected";
-let connectedPhone: string | null = null;
-let sock: ReturnType<typeof makeWASocket> | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingPairingPhone: string | null = null;
+export type WAStatus = "disconnected" | "open";
 
 // ---------------------------------------------------------------------------
-// Bounded TTL cache for message IDs.
-// Serves two purposes:
-//   1. Deduplication — Baileys can re-emit messages.upsert on reconnect; we
-//      skip any message ID we've already processed.
-//   2. Bot-echo suppression — replaces the old unbounded botSentIds Set.
-// Entries expire after CACHE_TTL_MS; a cleanup sweep runs every SWEEP_MS.
+// Bounded TTL cache for message IDs — Meta can redeliver the same webhook
+// event on retry (e.g. if we're slow to respond), so we dedupe on message id.
 // ---------------------------------------------------------------------------
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const SWEEP_MS = 5 * 60 * 1000; //  5 minutes
 
-/** "processed" = we handled this as an inbound message; "bot" = we sent it. */
-const msgCache = new Map<string, { at: number; kind: "processed" | "bot" }>();
+const msgCache = new Map<string, number>();
 
 function cacheHas(id: string): boolean {
-  const entry = msgCache.get(id);
-  if (!entry) return false;
-  if (Date.now() - entry.at > CACHE_TTL_MS) {
+  const at = msgCache.get(id);
+  if (at === undefined) return false;
+  if (Date.now() - at > CACHE_TTL_MS) {
     msgCache.delete(id);
     return false;
   }
   return true;
 }
-function clearAuthDir() {
-  if (!fs.existsSync(AUTH_DIR)) return;
-  for (const entry of fs.readdirSync(AUTH_DIR)) {
-    fs.rmSync(path.join(AUTH_DIR, entry), { recursive: true, force: true });
-  }
-}
-function cacheSet(id: string, kind: "processed" | "bot"): void {
-  msgCache.set(id, { at: Date.now(), kind });
+function cacheSet(id: string): void {
+  msgCache.set(id, Date.now());
 }
 
-// Periodic sweep — prune entries older than TTL so the Map stays bounded.
 setInterval(() => {
   const cutoff = Date.now() - CACHE_TTL_MS;
-  for (const [id, entry] of msgCache) {
-    if (entry.at < cutoff) msgCache.delete(id);
+  for (const [id, at] of msgCache) {
+    if (at < cutoff) msgCache.delete(id);
   }
-}, SWEEP_MS).unref(); // .unref() so this timer never prevents process exit
-
-export function getQR(): string | null {
-  return currentQR;
-}
-
-export function getPairingCode(): string | null {
-  return pairingCode;
-}
+}, SWEEP_MS).unref();
 
 export function getStatus(): WAStatus {
-  return currentStatus;
+  const configured = !!(
+    process.env.WHATSAPP_PHONE_NUMBER_ID &&
+    process.env.WHATSAPP_ACCESS_TOKEN &&
+    process.env.WHATSAPP_VERIFY_TOKEN
+  );
+  return configured ? "open" : "disconnected";
 }
 
 export function getConnectedPhone(): string | null {
-  return connectedPhone;
+  return process.env.WHATSAPP_DISPLAY_PHONE ?? null;
 }
 
-async function findUserByPhone(
-  phone: string,
-  jid: string,
-): Promise<User | null> {
+// ---------------------------------------------------------------------------
+// Webhook verification (GET handshake) — Meta calls this once when you save
+// the Callback URL / Verify Token in the app dashboard.
+// ---------------------------------------------------------------------------
+export function verifyWebhookChallenge(
+  mode: string | undefined,
+  token: string | undefined,
+  challenge: string | undefined,
+): string | null {
+  const expected = process.env.WHATSAPP_VERIFY_TOKEN;
+  if (mode === "subscribe" && expected && token === expected) {
+    return challenge ?? "";
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Webhook signature verification (POST events) — Meta signs every webhook
+// delivery with your app secret so you can confirm it's really from Meta.
+// ---------------------------------------------------------------------------
+export function verifyCloudApiSignature(
+  rawBody: Buffer,
+  signatureHeader: string | undefined,
+): boolean {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret || !signatureHeader) return false;
+  const expected =
+    "sha256=" +
+    crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(signatureHeader),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function findUserByPhone(phone: string): Promise<User | null> {
   const hashed = hashPhone(phone);
   const [user] = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.phoneHash, hashed));
 
-  if (user && user.whatsappJid !== jid) {
+  if (user && user.whatsappJid !== phone) {
     await db
       .update(usersTable)
-      .set({ whatsappJid: jid })
+      .set({ whatsappJid: phone })
       .where(eq(usersTable.id, user.id));
   }
 
   return user ?? null;
 }
 
-async function sendTracked(jid: string, text: string): Promise<void> {
-  const result = await sock?.sendMessage(jid, { text });
-  if (result?.key?.id) cacheSet(result.key.id, "bot");
-}
+async function sendCloudApiMessage(to: string, text: string): Promise<void> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!phoneNumberId || !token) {
+    logger.error("WhatsApp Cloud API not configured — cannot send message");
+    return;
+  }
 
-export async function sendToJid(jid: string, text: string): Promise<void> {
-  await sendTracked(jid, text);
-}
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body: text },
+      }),
+    },
+  );
 
-async function sendWelcomeSequence(jid: string): Promise<void> {
-  const base = getBaseUrl();
-  const messages = [
-    `Welcome to The Ritual AI! I'm your personal goal coaching assistant.`,
-    `To get started, sign up at ${base} and link your phone number in Account Settings. Once set up, message me each morning and evening to track your goals and get personalised coaching.`,
-    `If you already have an account, go to Account Settings and enter this number — then come back and say good morning!`,
-  ];
-
-  for (const text of messages) {
-    await sendTracked(jid, text);
-    await new Promise((r) => setTimeout(r, 800));
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    logger.error(
+      { status: res.status, errBody },
+      "Failed to send WhatsApp message via Cloud API",
+    );
   }
 }
 
+async function sendTracked(to: string, text: string): Promise<void> {
+  await sendCloudApiMessage(to, text);
+}
+
+export async function sendToJid(to: string, text: string): Promise<void> {
+  await sendTracked(to, text);
+}
+
 async function handleIncomingMessage(
-  jid: string,
   phone: string,
   text: string,
 ): Promise<void> {
-  const user = await findUserByPhone(phone, jid);
+  const user = await findUserByPhone(phone);
 
   if (!user) {
-    await sendWelcomeSequence(jid);
+    // Silently ignore messages from numbers with no linked app account.
     return;
   }
 
   if (!user.onboardingCompleted) {
     const base = getBaseUrl();
     await sendTracked(
-      jid,
+      phone,
       `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`,
     );
     return;
   }
 
-  // Single source of truth for daily/monthly budget — same check the dashboard
-  // route uses. Stops a user who is over their cap before we spend tokens
-  // running the classifier or the ritual handler.
   const budgetCheck = checkBudgetForUser(user);
   if (!budgetCheck.allowed) {
     const base = getBaseUrl();
@@ -163,14 +178,12 @@ async function handleIncomingMessage(
       ? `\n\n👉 Upgrade now: ${base}/pricing`
       : "";
     await sendTracked(
-      jid,
+      phone,
       (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint,
     );
     return;
   }
 
-  // Adaptive nudging: record this inbound message's local hour so we can later
-  // pick the user's preferred push time. Errors here must not block the reply.
   try {
     await recordInboundEngagement(user.id);
   } catch (engagementErr) {
@@ -207,240 +220,58 @@ async function handleIncomingMessage(
     }
   }
 
-  await sendTracked(jid, reply);
+  await sendTracked(phone, reply);
 }
 
-async function connect(phoneForPairing?: string): Promise<void> {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
+// ---------------------------------------------------------------------------
+// Cloud API webhook payload shape (POST body, already signature-verified):
+// entry[].changes[].value.messages[] — incoming user messages
+// entry[].changes[].value.statuses[] — delivery/read receipts (ignored)
+// ---------------------------------------------------------------------------
+interface CloudApiMessage {
+  from: string;
+  id: string;
+  type: string;
+  text?: { body: string };
+}
+interface CloudApiWebhookBody {
+  entry?: Array<{
+    changes?: Array<{
+      value?: { messages?: CloudApiMessage[] };
+    }>;
+  }>;
+}
 
-  if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-  }
-
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
-
-  currentStatus = "connecting";
-  currentQR = null;
-  pairingCode = null;
-
-  const usePairingCode = !!phoneForPairing;
-
-  sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: !usePairingCode,
-    logger: logger.child({ module: "baileys" }) as Parameters<
-      typeof makeWASocket
-    >[0]["logger"],
-    browser: ["The Ritual AI", "Chrome", "1.0.0"],
-    syncFullHistory: false,
-    generateHighQualityLinkPreview: false,
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  if (usePairingCode && phoneForPairing && !state.creds.registered) {
-    setTimeout(async () => {
-      try {
-        const normalised = phoneForPairing.replace(/\D/g, "");
-        const code = await sock!.requestPairingCode(normalised);
-        pairingCode = code;
-        pendingPairingPhone = phoneForPairing;
-        logger.info(
-          { phone: normalised.slice(-4) + "****" },
-          "Pairing code generated",
-        );
-      } catch (err) {
-        logger.error({ err }, "Failed to request pairing code");
-      }
-    }, 3000);
-  }
-
-  sock.ev.on(
-    "connection.update",
-    async (update: BaileysEventMap["connection.update"]) => {
-      const { connection, lastDisconnect, qr } = update;
-
-      if (qr) {
-        currentQR = qr;
-        currentStatus = "connecting";
-        logger.info("WhatsApp QR code updated — scan to connect");
-      }
-
-      if (connection === "close") {
-        currentStatus = "disconnected";
-        currentQR = null;
-        pairingCode = null;
-        pendingPairingPhone = null;
-        connectedPhone = null;
-        const reason = (
-          lastDisconnect?.error as { output?: { statusCode?: number } }
-        )?.output?.statusCode;
-        const shouldReconnect = reason !== DisconnectReason.loggedOut;
-
-        logger.warn({ reason }, "WhatsApp connection closed");
-
-        if (shouldReconnect) {
-          reconnectTimer = setTimeout(() => {
-            connect().catch((err) =>
-              logger.error({ err }, "WhatsApp reconnect failed"),
-            );
-          }, 5000);
-        } else {
-          logger.info("WhatsApp logged out — clearing auth state");
-          clearAuthDir();
-          // Reconnect with fresh state so a new QR / pairing code is generated
-          reconnectTimer = setTimeout(() => {
-            connect().catch((err) =>
-              logger.error({ err }, "WhatsApp reconnect (fresh) failed"),
-            );
-          }, 3000);
-        }
-      }
-
-      if (connection === "open") {
-        // Clear any queued reconnect from a prior close — otherwise it could
-        // fire mid-connection and create a leaked socket.
-        if (reconnectTimer) {
-          clearTimeout(reconnectTimer);
-          reconnectTimer = null;
-        }
-        currentStatus = "open";
-        currentQR = null;
-        pairingCode = null;
-        pendingPairingPhone = null;
-        // Extract connected phone number from the socket user JID
-        const rawJid = sock?.user?.id ?? "";
-        connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
-        logger.info({ connectedPhone }, "WhatsApp connected");
-      }
-    },
-  );
-
-  sock.ev.on(
-    "messages.upsert",
-    async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
-      if (type !== "notify") return;
-
+export async function processWebhookPayload(
+  body: CloudApiWebhookBody,
+): Promise<void> {
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const messages = change.value?.messages ?? [];
       for (const msg of messages) {
-        if (!msg.message) continue;
+        if (msg.type !== "text") continue;
+        if (cacheHas(msg.id)) continue;
+        cacheSet(msg.id);
 
-        const msgId = msg.key.id ?? "";
-
-        // Only process messages sent TO this number, never FROM it.
-        // fromMe=true covers both the bot's own replies and any message the
-        // account owner sends from their phone to someone else — both must be
-        // ignored so we don't reply in unrelated chats.
-        if (msg.key.fromMe) {
-          const ownJid = sock?.user?.id;
-          const ownPhone = ownJid ? jidToPhone(ownJid).split(":")[0] : null;
-          const remotePhone = msg.key.remoteJid
-            ? jidToPhone(msg.key.remoteJid).split(":")[0]
-            : null;
-          const isSelfChat = !!ownPhone && ownPhone === remotePhone;
-          if (!isSelfChat) continue;
-        }
-        //if (msg.key.fromMe) continue;
-
-        // Deduplicate: Baileys re-emits messages.upsert after every reconnect.
-        // Skip any message ID we've already processed or sent ourselves.
-        if (cacheHas(msgId)) continue;
-        cacheSet(msgId, "processed");
-
-        const jid = msg.key.remoteJid;
-        if (!jid || jid.endsWith("@g.us")) continue;
-
-        const phone = jidToPhone(jid);
-
-        const text =
-          msg.message.conversation ??
-          msg.message.extendedTextMessage?.text ??
-          "";
-
+        const phone = msg.from;
+        const text = msg.text?.body ?? "";
         if (!text.trim()) continue;
 
         logger.info(
-          { phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe },
+          { phone: phone.slice(-4) + "****" },
           "Incoming WhatsApp message",
         );
 
         try {
-          await handleIncomingMessage(jid, phone, text);
+          await handleIncomingMessage(phone, text);
         } catch (err) {
           logger.error({ err }, "Error handling WhatsApp message");
           await sendTracked(
-            jid,
+            phone,
             "Something went wrong. Please try again in a moment.",
           );
         }
       }
-    },
-  );
-}
-
-export async function startWhatsApp(): Promise<void> {
-  try {
-    await connect();
-  } catch (err) {
-    logger.error({ err }, "Failed to start WhatsApp service");
-    reconnectTimer = setTimeout(() => {
-      void connect();
-    }, 10000);
-  }
-}
-
-export async function requestPairingCode(phone: string): Promise<string> {
-  // Disconnect any existing socket, then reconnect using the pairing-code path
-  // inside connect(). connect() calls sock.requestPairingCode() via a 3-second
-  // setTimeout — BEFORE the first QR is generated — which is the timing Baileys
-  // requires. Waiting for a QR event and calling it afterwards (the old approach)
-  // was too late and caused Baileys to throw.
-  await disconnectWhatsApp();
-  await new Promise((r) => setTimeout(r, 500));
-  await connect(phone);
-
-  // Poll for pairingCode to be written by the setTimeout inside connect().
-  // Give it up to 30 seconds (the 3-second delay + Baileys round-trip).
-  return new Promise<string>((resolve, reject) => {
-    const deadline = Date.now() + 30_000;
-    const poll = setInterval(() => {
-      if (pairingCode) {
-        clearInterval(poll);
-        logger.info(
-          { phone: phone.replace(/\D/g, "").slice(-4) + "****" },
-          "Pairing code issued",
-        );
-        resolve(pairingCode);
-      } else if (Date.now() > deadline) {
-        clearInterval(poll);
-        reject(
-          new Error(
-            "Timed out waiting for pairing code — check the phone number and try again",
-          ),
-        );
-      }
-    }, 250);
-  });
-}
-
-export async function disconnectWhatsApp(): Promise<void> {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  if (sock) {
-    await sock.logout().catch(() => {});
-    sock = null;
-  }
-  currentStatus = "disconnected";
-  currentQR = null;
-  pairingCode = null;
-  pendingPairingPhone = null;
-  if (fs.existsSync(AUTH_DIR)) {
-    clearAuthDir();
+    }
   }
 }

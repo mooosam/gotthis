@@ -49,9 +49,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    volumes:
-      # WhatsApp session must survive container restarts
-      - whatsapp_auth:/app/.whatsapp-auth
 
   # ── Web frontend (static build served by nginx) ───────────────────────────────
   web:
@@ -79,4 +76,3 @@ services:
 
 volumes:
   mysql_data:
-  whatsapp_auth:
