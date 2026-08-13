@@ -1,0 +1,1693 @@
+diff --git a/.env.example b/.env.example
+index 6b4a1b7..19dd509 100644
+--- a/.env.example
++++ b/.env.example
+@@ -3,6 +3,20 @@
+ # docker-compose.yml overrides this automatically — just set the passwords below.
+ DATABASE_URL=mysql://ritual:yourpassword@mysql:3306/ritual_ai
+ 
++# ─── WhatsApp Cloud API ─────────────────────────────────────────────────────
++# From your Meta App dashboard → WhatsApp → API Setup.
++WHATSAPP_PHONE_NUMBER_ID=123456789012345
++WHATSAPP_ACCESS_TOKEN=EAAG...
++# From Meta App dashboard → App Settings → Basic → App Secret.
++# Used to verify that incoming webhook calls really came from Meta.
++WHATSAPP_APP_SECRET=your-meta-app-secret
++# Any random string you choose (e.g. `openssl rand -hex 32`).
++# Enter the SAME value in the Meta dashboard's webhook "Verify token" field.
++WHATSAPP_VERIFY_TOKEN=choose-a-long-random-string
++# Optional — cosmetic only, shown on the landing page / admin status.
++WHATSAPP_DISPLAY_PHONE=+14165551234
++
++
+ # ─── MySQL passwords (docker-compose reads these) ─────────────────────────────
+ # Must match the password in DATABASE_URL above.
+ MYSQL_PASSWORD=yourpassword
+diff --git a/artifacts/api-server/package.json b/artifacts/api-server/package.json
+index 3998f9e..8ce83b2 100644
+--- a/artifacts/api-server/package.json
++++ b/artifacts/api-server/package.json
+@@ -11,7 +11,6 @@
+   },
+   "dependencies": {
+     "@clerk/express": "^2.0.8",
+-    "@whiskeysockets/baileys": "7.0.0-rc.9",
+     "@workspace/api-zod": "workspace:*",
+     "@workspace/db": "workspace:*",
+     "@workspace/integrations-gemini-ai": "workspace:*",
+diff --git a/artifacts/api-server/src/app.ts b/artifacts/api-server/src/app.ts
+index 5715958..3791ba7 100644
+--- a/artifacts/api-server/src/app.ts
++++ b/artifacts/api-server/src/app.ts
+@@ -10,9 +10,64 @@ import {
+ import router from "./routes";
+ import { logger } from "./lib/logger";
+ import { handleBillingWebhook } from "./routes/billing";
++import {
++  verifyWebhookChallenge,
++  verifyCloudApiSignature,
++  processWebhookPayload,
++} from "./lib/whatsapp/service.js";
+ 
+ const app: Express = express();
+ 
++// WhatsApp Cloud API webhook verification handshake. Meta calls this once
++// (as a GET) when you save the Callback URL + Verify Token in the app
++// dashboard. No signature to check here — just echo back hub.challenge.
++app.get("/api/whatsapp/webhook", (req, res) => {
++  const mode = req.query["hub.mode"] as string | undefined;
++  const token = req.query["hub.verify_token"] as string | undefined;
++  const challenge = req.query["hub.challenge"] as string | undefined;
++  const result = verifyWebhookChallenge(mode, token, challenge);
++  if (result !== null) {
++    res.status(200).send(result);
++  } else {
++    logger.warn("WhatsApp webhook verification failed");
++    res.sendStatus(403);
++  }
++});
++
++// WhatsApp Cloud API webhook events (incoming messages, delivery statuses).
++// MUST be registered before express.json() — signature verification needs
++// the raw, untouched request body. Configure this same URL as the Callback
++// URL in the Meta app dashboard.
++app.post(
++  "/api/whatsapp/webhook",
++  express.raw({ type: "application/json" }),
++  (req, res) => {
++    const signature = req.headers["x-hub-signature-256"];
++    const sig = Array.isArray(signature) ? signature[0] : signature;
++    if (!verifyCloudApiSignature(req.body as Buffer, sig)) {
++      logger.warn("Invalid WhatsApp webhook signature");
++      res.sendStatus(401);
++      return;
++    }
++
++    // Acknowledge immediately — Meta retries aggressively if it doesn't get
++    // a fast 200, which would otherwise cause duplicate processing.
++    res.sendStatus(200);
++
++    let payload: Parameters<typeof processWebhookPayload>[0];
++    try {
++      payload = JSON.parse((req.body as Buffer).toString("utf8"));
++    } catch (err) {
++      logger.error({ err }, "Failed to parse WhatsApp webhook payload");
++      return;
++    }
++
++    processWebhookPayload(payload).catch((err) => {
++      logger.error({ err }, "Error processing WhatsApp webhook payload");
++    });
++  },
++);
++
+ // Webhook route MUST be registered before express.json() — Stripe requires the raw body.
+ // Configure https://gotthis.one/api/billing/webhook as the endpoint in Stripe dashboard.
+ // Events to enable: checkout.session.completed, customer.subscription.updated,
+diff --git a/artifacts/api-server/src/index.ts b/artifacts/api-server/src/index.ts
+index 2511974..3c8680e 100644
+--- a/artifacts/api-server/src/index.ts
++++ b/artifacts/api-server/src/index.ts
+@@ -1,6 +1,6 @@
+ import app from "./app";
+ import { logger } from "./lib/logger";
+-import { startWhatsApp, sendToJid } from "./lib/whatsapp/service.js";
++import { sendToJid } from "./lib/whatsapp/service.js";
+ import { startWeeklyChartCron } from "./lib/whatsapp/weekly-chart.js";
+ import { startNewsletterCron } from "./lib/email/newsletter.js";
+ import { startDailyResetCron } from "./lib/goals/daily-reset.js";
+@@ -8,8 +8,7 @@ import { startStripeReconcileCron } from "./lib/stripe-reconcile.js";
+ import { startCleanupCron } from "./lib/cleanup.js";
+ import { seedDefaultPlans } from "./lib/seed-plans.js";
+ 
+-// Catch unhandled promise rejections (e.g. from Baileys reconnect timers) so
+-// they are logged rather than crashing the process in Node 15+.
++// Catch unhandled promise rejections so they are logged rather than crashing the process in Node 15+.
+ process.on("unhandledRejection", (reason) => {
+   logger.error({ err: reason }, "Unhandled promise rejection — keeping process alive");
+ });
+@@ -49,10 +48,6 @@ app.listen(port, (err) => {
+     logger.warn({ err: seedErr }, "Plan seed failed");
+   });
+ 
+-  startWhatsApp().catch((startErr) => {
+-    logger.error({ err: startErr }, "WhatsApp service failed to start");
+-  });
+-
+   startWeeklyChartCron(sendToJid);
+   startNewsletterCron();
+   startDailyResetCron();
+diff --git a/artifacts/api-server/src/lib/whatsapp/service.ts b/artifacts/api-server/src/lib/whatsapp/service.ts
+index f353b9d..d802382 100644
+--- a/artifacts/api-server/src/lib/whatsapp/service.ts
++++ b/artifacts/api-server/src/lib/whatsapp/service.ts
+@@ -1,11 +1,4 @@
+-import makeWASocket, {
+-  useMultiFileAuthState,
+-  DisconnectReason,
+-  fetchLatestBaileysVersion,
+-} from "@whiskeysockets/baileys";
+-import type { BaileysEventMap } from "@whiskeysockets/baileys";
+-import path from "node:path";
+-import fs from "node:fs";
++import crypto from "node:crypto";
+ import { db, usersTable } from "@workspace/db";
+ import { eq } from "drizzle-orm";
+ import { hashPhone } from "../phone.js";
+@@ -16,146 +9,168 @@ import { recordInboundEngagement } from "../ai/engagement.js";
+ import { logger } from "../logger.js";
+ import type { User } from "@workspace/db";
+ 
+-const AUTH_DIR = path.resolve(process.cwd(), ".whatsapp-auth");
+-
+-function jidToPhone(jid: string): string {
+-  return jid.split("@")[0];
+-}
+-
+-export type WAStatus = "disconnected" | "connecting" | "open";
+-
+-let currentQR: string | null = null;
+-let pairingCode: string | null = null;
+-let currentStatus: WAStatus = "disconnected";
+-let connectedPhone: string | null = null;
+-let sock: ReturnType<typeof makeWASocket> | null = null;
+-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+-let pendingPairingPhone: string | null = null;
++export type WAStatus = "disconnected" | "open";
+ 
+ // ---------------------------------------------------------------------------
+-// Bounded TTL cache for message IDs.
+-// Serves two purposes:
+-//   1. Deduplication — Baileys can re-emit messages.upsert on reconnect; we
+-//      skip any message ID we've already processed.
+-//   2. Bot-echo suppression — replaces the old unbounded botSentIds Set.
+-// Entries expire after CACHE_TTL_MS; a cleanup sweep runs every SWEEP_MS.
++// Bounded TTL cache for message IDs — Meta can redeliver the same webhook
++// event on retry (e.g. if we're slow to respond), so we dedupe on message id.
+ // ---------------------------------------------------------------------------
+ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+ const SWEEP_MS = 5 * 60 * 1000; //  5 minutes
+ 
+-/** "processed" = we handled this as an inbound message; "bot" = we sent it. */
+-const msgCache = new Map<string, { at: number; kind: "processed" | "bot" }>();
++const msgCache = new Map<string, number>();
+ 
+ function cacheHas(id: string): boolean {
+-  const entry = msgCache.get(id);
+-  if (!entry) return false;
+-  if (Date.now() - entry.at > CACHE_TTL_MS) {
++  const at = msgCache.get(id);
++  if (at === undefined) return false;
++  if (Date.now() - at > CACHE_TTL_MS) {
+     msgCache.delete(id);
+     return false;
+   }
+   return true;
+ }
+-function clearAuthDir() {
+-  if (!fs.existsSync(AUTH_DIR)) return;
+-  for (const entry of fs.readdirSync(AUTH_DIR)) {
+-    fs.rmSync(path.join(AUTH_DIR, entry), { recursive: true, force: true });
+-  }
+-}
+-function cacheSet(id: string, kind: "processed" | "bot"): void {
+-  msgCache.set(id, { at: Date.now(), kind });
++function cacheSet(id: string): void {
++  msgCache.set(id, Date.now());
+ }
+ 
+-// Periodic sweep — prune entries older than TTL so the Map stays bounded.
+ setInterval(() => {
+   const cutoff = Date.now() - CACHE_TTL_MS;
+-  for (const [id, entry] of msgCache) {
+-    if (entry.at < cutoff) msgCache.delete(id);
++  for (const [id, at] of msgCache) {
++    if (at < cutoff) msgCache.delete(id);
+   }
+-}, SWEEP_MS).unref(); // .unref() so this timer never prevents process exit
++}, SWEEP_MS).unref();
+ 
+-export function getQR(): string | null {
+-  return currentQR;
++export function getStatus(): WAStatus {
++  const configured = !!(
++    process.env.WHATSAPP_PHONE_NUMBER_ID &&
++    process.env.WHATSAPP_ACCESS_TOKEN &&
++    process.env.WHATSAPP_VERIFY_TOKEN
++  );
++  return configured ? "open" : "disconnected";
+ }
+ 
+-export function getPairingCode(): string | null {
+-  return pairingCode;
++export function getConnectedPhone(): string | null {
++  return process.env.WHATSAPP_DISPLAY_PHONE ?? null;
+ }
+ 
+-export function getStatus(): WAStatus {
+-  return currentStatus;
++// ---------------------------------------------------------------------------
++// Webhook verification (GET handshake) — Meta calls this once when you save
++// the Callback URL / Verify Token in the app dashboard.
++// ---------------------------------------------------------------------------
++export function verifyWebhookChallenge(
++  mode: string | undefined,
++  token: string | undefined,
++  challenge: string | undefined,
++): string | null {
++  const expected = process.env.WHATSAPP_VERIFY_TOKEN;
++  if (mode === "subscribe" && expected && token === expected) {
++    return challenge ?? "";
++  }
++  return null;
+ }
+ 
+-export function getConnectedPhone(): string | null {
+-  return connectedPhone;
++// ---------------------------------------------------------------------------
++// Webhook signature verification (POST events) — Meta signs every webhook
++// delivery with your app secret so you can confirm it's really from Meta.
++// ---------------------------------------------------------------------------
++export function verifyCloudApiSignature(
++  rawBody: Buffer,
++  signatureHeader: string | undefined,
++): boolean {
++  const appSecret = process.env.WHATSAPP_APP_SECRET;
++  if (!appSecret || !signatureHeader) return false;
++  const expected =
++    "sha256=" +
++    crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
++  try {
++    return crypto.timingSafeEqual(
++      Buffer.from(expected),
++      Buffer.from(signatureHeader),
++    );
++  } catch {
++    return false;
++  }
+ }
+ 
+-async function findUserByPhone(
+-  phone: string,
+-  jid: string,
+-): Promise<User | null> {
++async function findUserByPhone(phone: string): Promise<User | null> {
+   const hashed = hashPhone(phone);
+   const [user] = await db
+     .select()
+     .from(usersTable)
+     .where(eq(usersTable.phoneHash, hashed));
+ 
+-  if (user && user.whatsappJid !== jid) {
++  if (user && user.whatsappJid !== phone) {
+     await db
+       .update(usersTable)
+-      .set({ whatsappJid: jid })
++      .set({ whatsappJid: phone })
+       .where(eq(usersTable.id, user.id));
+   }
+ 
+   return user ?? null;
+ }
+ 
+-async function sendTracked(jid: string, text: string): Promise<void> {
+-  const result = await sock?.sendMessage(jid, { text });
+-  if (result?.key?.id) cacheSet(result.key.id, "bot");
++async function sendCloudApiMessage(to: string, text: string): Promise<void> {
++  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
++  const token = process.env.WHATSAPP_ACCESS_TOKEN;
++  if (!phoneNumberId || !token) {
++    logger.error("WhatsApp Cloud API not configured — cannot send message");
++    return;
++  }
++
++  const res = await fetch(
++    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
++    {
++      method: "POST",
++      headers: {
++        Authorization: `Bearer ${token}`,
++        "Content-Type": "application/json",
++      },
++      body: JSON.stringify({
++        messaging_product: "whatsapp",
++        to,
++        type: "text",
++        text: { body: text },
++      }),
++    },
++  );
++
++  if (!res.ok) {
++    const errBody = await res.text().catch(() => "");
++    logger.error(
++      { status: res.status, errBody },
++      "Failed to send WhatsApp message via Cloud API",
++    );
++  }
+ }
+ 
+-export async function sendToJid(jid: string, text: string): Promise<void> {
+-  await sendTracked(jid, text);
++async function sendTracked(to: string, text: string): Promise<void> {
++  await sendCloudApiMessage(to, text);
+ }
+ 
+-async function sendWelcomeSequence(jid: string): Promise<void> {
+-  const base = getBaseUrl();
+-  const messages = [
+-    `Welcome to The Ritual AI! I'm your personal goal coaching assistant.`,
+-    `To get started, sign up at ${base} and link your phone number in Account Settings. Once set up, message me each morning and evening to track your goals and get personalised coaching.`,
+-    `If you already have an account, go to Account Settings and enter this number — then come back and say good morning!`,
+-  ];
+-
+-  for (const text of messages) {
+-    await sendTracked(jid, text);
+-    await new Promise((r) => setTimeout(r, 800));
+-  }
++export async function sendToJid(to: string, text: string): Promise<void> {
++  await sendTracked(to, text);
+ }
+ 
+ async function handleIncomingMessage(
+-  jid: string,
+   phone: string,
+   text: string,
+ ): Promise<void> {
+-  const user = await findUserByPhone(phone, jid);
++  const user = await findUserByPhone(phone);
+ 
+   if (!user) {
+-    await sendWelcomeSequence(jid);
++    // Silently ignore messages from numbers with no linked app account.
+     return;
+   }
+ 
+   if (!user.onboardingCompleted) {
+     const base = getBaseUrl();
+     await sendTracked(
+-      jid,
++      phone,
+       `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`,
+     );
+     return;
+   }
+ 
+-  // Single source of truth for daily/monthly budget — same check the dashboard
+-  // route uses. Stops a user who is over their cap before we spend tokens
+-  // running the classifier or the ritual handler.
+   const budgetCheck = checkBudgetForUser(user);
+   if (!budgetCheck.allowed) {
+     const base = getBaseUrl();
+@@ -163,14 +178,12 @@ async function handleIncomingMessage(
+       ? `\n\n👉 Upgrade now: ${base}/pricing`
+       : "";
+     await sendTracked(
+-      jid,
++      phone,
+       (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint,
+     );
+     return;
+   }
+ 
+-  // Adaptive nudging: record this inbound message's local hour so we can later
+-  // pick the user's preferred push time. Errors here must not block the reply.
+   try {
+     await recordInboundEngagement(user.id);
+   } catch (engagementErr) {
+@@ -207,240 +220,58 @@ async function handleIncomingMessage(
+     }
+   }
+ 
+-  await sendTracked(jid, reply);
++  await sendTracked(phone, reply);
+ }
+ 
+-async function connect(phoneForPairing?: string): Promise<void> {
+-  if (reconnectTimer) {
+-    clearTimeout(reconnectTimer);
+-    reconnectTimer = null;
+-  }
+-
+-  if (!fs.existsSync(AUTH_DIR)) {
+-    fs.mkdirSync(AUTH_DIR, { recursive: true });
+-  }
+-
+-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+-  const { version } = await fetchLatestBaileysVersion();
+-
+-  currentStatus = "connecting";
+-  currentQR = null;
+-  pairingCode = null;
+-
+-  const usePairingCode = !!phoneForPairing;
+-
+-  sock = makeWASocket({
+-    version,
+-    auth: state,
+-    printQRInTerminal: !usePairingCode,
+-    logger: logger.child({ module: "baileys" }) as Parameters<
+-      typeof makeWASocket
+-    >[0]["logger"],
+-    browser: ["The Ritual AI", "Chrome", "1.0.0"],
+-    syncFullHistory: false,
+-    generateHighQualityLinkPreview: false,
+-  });
+-
+-  sock.ev.on("creds.update", saveCreds);
+-
+-  if (usePairingCode && phoneForPairing && !state.creds.registered) {
+-    setTimeout(async () => {
+-      try {
+-        const normalised = phoneForPairing.replace(/\D/g, "");
+-        const code = await sock!.requestPairingCode(normalised);
+-        pairingCode = code;
+-        pendingPairingPhone = phoneForPairing;
+-        logger.info(
+-          { phone: normalised.slice(-4) + "****" },
+-          "Pairing code generated",
+-        );
+-      } catch (err) {
+-        logger.error({ err }, "Failed to request pairing code");
+-      }
+-    }, 3000);
+-  }
+-
+-  sock.ev.on(
+-    "connection.update",
+-    async (update: BaileysEventMap["connection.update"]) => {
+-      const { connection, lastDisconnect, qr } = update;
+-
+-      if (qr) {
+-        currentQR = qr;
+-        currentStatus = "connecting";
+-        logger.info("WhatsApp QR code updated — scan to connect");
+-      }
+-
+-      if (connection === "close") {
+-        currentStatus = "disconnected";
+-        currentQR = null;
+-        pairingCode = null;
+-        pendingPairingPhone = null;
+-        connectedPhone = null;
+-        const reason = (
+-          lastDisconnect?.error as { output?: { statusCode?: number } }
+-        )?.output?.statusCode;
+-        const shouldReconnect = reason !== DisconnectReason.loggedOut;
+-
+-        logger.warn({ reason }, "WhatsApp connection closed");
+-
+-        if (shouldReconnect) {
+-          reconnectTimer = setTimeout(() => {
+-            connect().catch((err) =>
+-              logger.error({ err }, "WhatsApp reconnect failed"),
+-            );
+-          }, 5000);
+-        } else {
+-          logger.info("WhatsApp logged out — clearing auth state");
+-          clearAuthDir();
+-          // Reconnect with fresh state so a new QR / pairing code is generated
+-          reconnectTimer = setTimeout(() => {
+-            connect().catch((err) =>
+-              logger.error({ err }, "WhatsApp reconnect (fresh) failed"),
+-            );
+-          }, 3000);
+-        }
+-      }
+-
+-      if (connection === "open") {
+-        // Clear any queued reconnect from a prior close — otherwise it could
+-        // fire mid-connection and create a leaked socket.
+-        if (reconnectTimer) {
+-          clearTimeout(reconnectTimer);
+-          reconnectTimer = null;
+-        }
+-        currentStatus = "open";
+-        currentQR = null;
+-        pairingCode = null;
+-        pendingPairingPhone = null;
+-        // Extract connected phone number from the socket user JID
+-        const rawJid = sock?.user?.id ?? "";
+-        connectedPhone = rawJid ? jidToPhone(rawJid).split(":")[0] : null;
+-        logger.info({ connectedPhone }, "WhatsApp connected");
+-      }
+-    },
+-  );
+-
+-  sock.ev.on(
+-    "messages.upsert",
+-    async ({ messages, type }: BaileysEventMap["messages.upsert"]) => {
+-      if (type !== "notify") return;
++// ---------------------------------------------------------------------------
++// Cloud API webhook payload shape (POST body, already signature-verified):
++// entry[].changes[].value.messages[] — incoming user messages
++// entry[].changes[].value.statuses[] — delivery/read receipts (ignored)
++// ---------------------------------------------------------------------------
++interface CloudApiMessage {
++  from: string;
++  id: string;
++  type: string;
++  text?: { body: string };
++}
++interface CloudApiWebhookBody {
++  entry?: Array<{
++    changes?: Array<{
++      value?: { messages?: CloudApiMessage[] };
++    }>;
++  }>;
++}
+ 
++export async function processWebhookPayload(
++  body: CloudApiWebhookBody,
++): Promise<void> {
++  for (const entry of body.entry ?? []) {
++    for (const change of entry.changes ?? []) {
++      const messages = change.value?.messages ?? [];
+       for (const msg of messages) {
+-        if (!msg.message) continue;
+-
+-        const msgId = msg.key.id ?? "";
+-
+-        // Only process messages sent TO this number, never FROM it.
+-        // fromMe=true covers both the bot's own replies and any message the
+-        // account owner sends from their phone to someone else — both must be
+-        // ignored so we don't reply in unrelated chats.
+-        if (msg.key.fromMe) {
+-          const ownJid = sock?.user?.id;
+-          const ownPhone = ownJid ? jidToPhone(ownJid).split(":")[0] : null;
+-          const remotePhone = msg.key.remoteJid
+-            ? jidToPhone(msg.key.remoteJid).split(":")[0]
+-            : null;
+-          const isSelfChat = !!ownPhone && ownPhone === remotePhone;
+-          if (!isSelfChat) continue;
+-        }
+-        //if (msg.key.fromMe) continue;
+-
+-        // Deduplicate: Baileys re-emits messages.upsert after every reconnect.
+-        // Skip any message ID we've already processed or sent ourselves.
+-        if (cacheHas(msgId)) continue;
+-        cacheSet(msgId, "processed");
+-
+-        const jid = msg.key.remoteJid;
+-        if (!jid || jid.endsWith("@g.us")) continue;
+-
+-        const phone = jidToPhone(jid);
+-
+-        const text =
+-          msg.message.conversation ??
+-          msg.message.extendedTextMessage?.text ??
+-          "";
++        if (msg.type !== "text") continue;
++        if (cacheHas(msg.id)) continue;
++        cacheSet(msg.id);
+ 
++        const phone = msg.from;
++        const text = msg.text?.body ?? "";
+         if (!text.trim()) continue;
+ 
+         logger.info(
+-          { phone: phone.slice(-4) + "****", fromMe: msg.key.fromMe },
++          { phone: phone.slice(-4) + "****" },
+           "Incoming WhatsApp message",
+         );
+ 
+         try {
+-          await handleIncomingMessage(jid, phone, text);
++          await handleIncomingMessage(phone, text);
+         } catch (err) {
+           logger.error({ err }, "Error handling WhatsApp message");
+           await sendTracked(
+-            jid,
++            phone,
+             "Something went wrong. Please try again in a moment.",
+           );
+         }
+       }
+-    },
+-  );
+-}
+-
+-export async function startWhatsApp(): Promise<void> {
+-  try {
+-    await connect();
+-  } catch (err) {
+-    logger.error({ err }, "Failed to start WhatsApp service");
+-    reconnectTimer = setTimeout(() => {
+-      void connect();
+-    }, 10000);
+-  }
+-}
+-
+-export async function requestPairingCode(phone: string): Promise<string> {
+-  // Disconnect any existing socket, then reconnect using the pairing-code path
+-  // inside connect(). connect() calls sock.requestPairingCode() via a 3-second
+-  // setTimeout — BEFORE the first QR is generated — which is the timing Baileys
+-  // requires. Waiting for a QR event and calling it afterwards (the old approach)
+-  // was too late and caused Baileys to throw.
+-  await disconnectWhatsApp();
+-  await new Promise((r) => setTimeout(r, 500));
+-  await connect(phone);
+-
+-  // Poll for pairingCode to be written by the setTimeout inside connect().
+-  // Give it up to 30 seconds (the 3-second delay + Baileys round-trip).
+-  return new Promise<string>((resolve, reject) => {
+-    const deadline = Date.now() + 30_000;
+-    const poll = setInterval(() => {
+-      if (pairingCode) {
+-        clearInterval(poll);
+-        logger.info(
+-          { phone: phone.replace(/\D/g, "").slice(-4) + "****" },
+-          "Pairing code issued",
+-        );
+-        resolve(pairingCode);
+-      } else if (Date.now() > deadline) {
+-        clearInterval(poll);
+-        reject(
+-          new Error(
+-            "Timed out waiting for pairing code — check the phone number and try again",
+-          ),
+-        );
+-      }
+-    }, 250);
+-  });
+-}
+-
+-export async function disconnectWhatsApp(): Promise<void> {
+-  if (reconnectTimer) {
+-    clearTimeout(reconnectTimer);
+-    reconnectTimer = null;
+-  }
+-  if (sock) {
+-    await sock.logout().catch(() => {});
+-    sock = null;
+-  }
+-  currentStatus = "disconnected";
+-  currentQR = null;
+-  pairingCode = null;
+-  pendingPairingPhone = null;
+-  if (fs.existsSync(AUTH_DIR)) {
+-    clearAuthDir();
++    }
+   }
+ }
+diff --git a/artifacts/api-server/src/routes/whatsapp.ts b/artifacts/api-server/src/routes/whatsapp.ts
+index 7f06d05..1b3fc8f 100644
+--- a/artifacts/api-server/src/routes/whatsapp.ts
++++ b/artifacts/api-server/src/routes/whatsapp.ts
+@@ -1,54 +1,17 @@
+ import { Router, type IRouter } from "express";
+ import { requireAuth } from "../middlewares/requireAuth.js";
+ import { requireAdmin } from "../middlewares/requireAdmin.js";
+-import { getQR, getStatus, getPairingCode, getConnectedPhone, disconnectWhatsApp, requestPairingCode } from "../lib/whatsapp/service.js";
++import { getStatus, getConnectedPhone } from "../lib/whatsapp/service.js";
+ 
+ const router: IRouter = Router();
+ 
+-// Public — no auth. Landing page uses this to build the wa.me QR code.
++// Public — no auth. Landing page uses this to build the wa.me link.
+ router.get("/whatsapp/bot-number", (_req, res): void => {
+-  const phone = getConnectedPhone();
+-  res.json({ phone: phone ?? null });
++  res.json({ phone: getConnectedPhone() });
+ });
+ 
+ router.get("/whatsapp/status", requireAuth, requireAdmin, (_req, res): void => {
+-  res.json({ status: getStatus(), hasQR: getQR() !== null, hasPairingCode: getPairingCode() !== null, connectedPhone: getConnectedPhone() });
+-});
+-
+-router.get("/whatsapp/qr", requireAuth, requireAdmin, (_req, res): void => {
+-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+-  res.setHeader("Pragma", "no-cache");
+-
+-  const qr = getQR();
+-  const status = getStatus();
+-  const code = getPairingCode();
+-
+-  if (status === "open") {
+-    res.json({ status: "connected", connectedPhone: getConnectedPhone() });
+-    return;
+-  }
+-
+-  res.json({ status, qr: qr ?? null, pairingCode: code ?? null });
+-});
+-
+-router.post("/whatsapp/pair", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+-  const { phone } = req.body as { phone?: string };
+-  if (!phone || !/^\+?\d{7,15}$/.test(phone.replace(/\s/g, ""))) {
+-    res.status(400).json({ error: "Provide a valid phone number with country code, e.g. +447700900000" });
+-    return;
+-  }
+-  try {
+-    const code = await requestPairingCode(phone.replace(/\s/g, ""));
+-    res.json({ code });
+-  } catch (err) {
+-    const message = err instanceof Error ? err.message : "Failed to generate pairing code";
+-    res.status(500).json({ error: message });
+-  }
+-});
+-
+-router.post("/whatsapp/disconnect", requireAuth, requireAdmin, async (_req, res): Promise<void> => {
+-  await disconnectWhatsApp();
+-  res.json({ ok: true });
++  res.json({ status: getStatus(), connectedPhone: getConnectedPhone() });
+ });
+ 
+ export default router;
+diff --git a/artifacts/web/src/pages/whatsapp.tsx b/artifacts/web/src/pages/whatsapp.tsx
+index 842801d..489b9e5 100644
+--- a/artifacts/web/src/pages/whatsapp.tsx
++++ b/artifacts/web/src/pages/whatsapp.tsx
+@@ -1,70 +1,37 @@
+-import { useState, useEffect, useCallback, useRef } from "react";
+-import { QRCodeSVG } from "qrcode.react";
+-import { Smartphone, CheckCircle2, RefreshCw, Unlink, Loader2, Hash } from "lucide-react";
++import { useState, useEffect, useCallback } from "react";
++import { Smartphone, CheckCircle2, XCircle } from "lucide-react";
+ import { apiFetch } from "@/lib/api";
+ 
+ import { AppLayout } from "@/components/layout/app-layout";
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+-import { Button } from "@/components/ui/button";
+-import { Input } from "@/components/ui/input";
+ import { Skeleton } from "@/components/ui/skeleton";
+-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+-import { useToast } from "@/hooks/use-toast";
+ 
+-type WAStatus = "connected" | "connecting" | "disconnected";
++type WAStatus = "open" | "disconnected";
+ 
+-interface QRResponse {
++interface StatusResponse {
+   status: WAStatus;
+-  qr?: string | null;
+-  pairingCode?: string | null;
+   connectedPhone?: string | null;
+ }
+ 
+ export default function WhatsAppPage() {
+-  const { toast } = useToast();
+-  const [status, setStatus] = useState<WAStatus>("connecting");
+-  const [qrRaw, setQrRaw] = useState<string | null>(null);
+-  const [pairingCode, setPairingCode] = useState<string | null>(null);
++  const [status, setStatus] = useState<WAStatus>("disconnected");
++  const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
+   const [isLoading, setIsLoading] = useState(true);
+-  const [isDisconnecting, setIsDisconnecting] = useState(false);
+   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+-  const [phone, setPhone] = useState("");
+-  const [isRequestingCode, setIsRequestingCode] = useState(false);
+-  const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
+ 
+-  const qrRef = useRef<string | null>(null);
+-
+-  const fetchQR = useCallback(async () => {
++  const fetchStatus = useCallback(async () => {
+     try {
+-      const res = await apiFetch("/api/whatsapp/qr");
++      const res = await apiFetch("/api/whatsapp/status");
+       if (res.status === 403) {
+         setIsAdmin(false);
+         setIsLoading(false);
+         return;
+       }
+-      if (!res.ok) throw new Error("Failed to fetch QR");
++      if (!res.ok) throw new Error("Failed to fetch status");
+       setIsAdmin(true);
+-      const data = (await res.json()) as QRResponse;
+-
+-      if (data.status === "connected") {
+-        setStatus("connected");
+-        setQrRaw(null);
+-        setPairingCode(null);
+-        setConnectedPhone(data.connectedPhone ?? null);
+-        qrRef.current = null;
+-      } else {
+-        setStatus("connecting");
+-        if (data.pairingCode) {
+-          setPairingCode(data.pairingCode);
+-        }
+-        if (data.qr && data.qr !== qrRef.current) {
+-          qrRef.current = data.qr;
+-          setQrRaw(data.qr);
+-        } else if (!data.qr) {
+-          setQrRaw(null);
+-          qrRef.current = null;
+-        }
+-      }
++      const data = (await res.json()) as StatusResponse;
++      setStatus(data.status);
++      setConnectedPhone(data.connectedPhone ?? null);
+     } catch {
+       setStatus("disconnected");
+     } finally {
+@@ -73,52 +40,8 @@ export default function WhatsAppPage() {
+   }, []);
+ 
+   useEffect(() => {
+-    void fetchQR();
+-    const interval = setInterval(() => {
+-      void fetchQR();
+-    }, 5000);
+-    return () => clearInterval(interval);
+-  }, [fetchQR]);
+-
+-  const handleDisconnect = async () => {
+-    setIsDisconnecting(true);
+-    try {
+-      const res = await apiFetch("/api/whatsapp/disconnect", { method: "POST" });
+-      if (!res.ok) throw new Error();
+-      setStatus("connecting");
+-      setQrRaw(null);
+-      setPairingCode(null);
+-      qrRef.current = null;
+-      toast({ title: "WhatsApp disconnected", description: "You can reconnect at any time." });
+-    } catch {
+-      toast({ title: "Failed to disconnect", variant: "destructive" });
+-    } finally {
+-      setIsDisconnecting(false);
+-    }
+-  };
+-
+-  const handleRequestCode = async () => {
+-    if (!phone.trim()) return;
+-    setIsRequestingCode(true);
+-    setPairingCode(null);
+-    try {
+-      const res = await apiFetch("/api/whatsapp/pair", {
+-        method: "POST",
+-        headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({ phone: phone.trim() }),
+-      });
+-      const data = (await res.json()) as { code?: string; error?: string };
+-      if (!res.ok) {
+-        toast({ title: "Error", description: data.error ?? "Could not generate pairing code.", variant: "destructive" });
+-        return;
+-      }
+-      setPairingCode(data.code ?? null);
+-    } catch {
+-      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+-    } finally {
+-      setIsRequestingCode(false);
+-    }
+-  };
++    void fetchStatus();
++  }, [fetchStatus]);
+ 
+   if (isAdmin === false) {
+     return (
+@@ -146,7 +69,7 @@ export default function WhatsAppPage() {
+             WhatsApp
+           </h1>
+           <p className="text-muted-foreground mt-2">
+-            Connect your WhatsApp to receive morning rituals and submit progress updates by message.
++            Powered by the official WhatsApp Business Cloud API.
+           </p>
+         </div>
+ 
+@@ -154,126 +77,47 @@ export default function WhatsAppPage() {
+           <CardHeader>
+             <CardTitle className="font-serif flex items-center gap-2">
+               <Smartphone className="h-5 w-5 text-primary" />
+-              {status === "connected" ? "Connected" : "Connect WhatsApp"}
++              {status === "open" ? "Connected" : "Not configured"}
+             </CardTitle>
+             <CardDescription>
+-              {status === "connected"
+-                ? "Your WhatsApp is linked. Send any message to start your ritual."
+-                : "Choose how you want to link your WhatsApp account."}
++              {status === "open"
++                ? "Your Cloud API credentials are configured and the webhook is live."
++                : "Set WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_APP_SECRET and WHATSAPP_VERIFY_TOKEN in your environment to connect."}
+             </CardDescription>
+           </CardHeader>
+           <CardContent>
+             {isLoading ? (
+-              <div className="flex items-center justify-center py-16">
+-                <Skeleton className="h-52 w-52 rounded-lg" />
++              <div className="flex items-center justify-center py-10">
++                <Skeleton className="h-24 w-full rounded-lg" />
+               </div>
+-            ) : status === "connected" ? (
+-              <div className="flex flex-col items-center gap-6 py-8">
++            ) : status === "open" ? (
++              <div className="flex flex-col items-center gap-6 py-6">
+                 <div className="rounded-full bg-primary/10 p-6">
+                   <CheckCircle2 className="h-12 w-12 text-primary" />
+                 </div>
+                 {connectedPhone && (
+                   <div className="w-full rounded-xl border border-primary/20 bg-primary/5 px-5 py-4 text-center space-y-1">
+                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+-                      Connected phone number
++                      Bot phone number
+                     </p>
+                     <p className="text-lg font-mono font-semibold text-foreground">
+-                      +{connectedPhone}
+-                    </p>
+-                    <p className="text-xs text-muted-foreground">
+-                      Go to <strong>Account Settings</strong> and enter this exact number so the AI can recognise you.
++                      {connectedPhone}
+                     </p>
+                   </div>
+                 )}
+                 <p className="text-center text-sm text-muted-foreground leading-relaxed max-w-sm">
+-                  WhatsApp is active. Message your Saved Messages (tap your own name at the top of your chat list) and the AI will respond.
++                  Users link their own phone number in Account Settings, then message the number
++                  above to start chatting with the AI.
+                 </p>
+-                <Button
+-                  variant="outline"
+-                  size="sm"
+-                  onClick={handleDisconnect}
+-                  disabled={isDisconnecting}
+-                  className="text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
+-                >
+-                  <Unlink className="mr-2 h-4 w-4" />
+-                  {isDisconnecting ? "Disconnecting..." : "Disconnect"}
+-                </Button>
+               </div>
+             ) : (
+-              <Tabs defaultValue="code" className="w-full">
+-                <TabsList className="w-full mb-6">
+-                  <TabsTrigger value="code" className="flex-1">
+-                    <Hash className="mr-2 h-4 w-4" />
+-                    Phone Number (Recommended)
+-                  </TabsTrigger>
+-                  <TabsTrigger value="qr" className="flex-1">
+-                    <Smartphone className="mr-2 h-4 w-4" />
+-                    QR Code
+-                  </TabsTrigger>
+-                </TabsList>
+-
+-                <TabsContent value="code" className="space-y-4">
+-                  <div className="space-y-2">
+-                    <p className="text-sm text-muted-foreground">
+-                      Enter your WhatsApp phone number with country code. WhatsApp will show you an 8-digit code to enter below.
+-                    </p>
+-                    <div className="flex gap-2">
+-                      <Input
+-                        placeholder="+447700900000"
+-                        value={phone}
+-                        onChange={(e) => setPhone(e.target.value)}
+-                        type="tel"
+-                        className="flex-1"
+-                      />
+-                      <Button onClick={handleRequestCode} disabled={isRequestingCode || !phone.trim()}>
+-                        {isRequestingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : "Get Code"}
+-                      </Button>
+-                    </div>
+-                  </div>
+-
+-                  {pairingCode && (
+-                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
+-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+-                        Your pairing code
+-                      </p>
+-                      <p className="text-4xl font-mono font-bold tracking-widest text-foreground">
+-                        {pairingCode}
+-                      </p>
+-                      <p className="text-xs text-muted-foreground">
+-                        Open WhatsApp on your phone, go to{" "}
+-                        <strong>Settings &gt; Linked Devices &gt; Link a Device</strong>, then enter this code.
+-                      </p>
+-                    </div>
+-                  )}
+-                </TabsContent>
+-
+-                <TabsContent value="qr">
+-                  {qrRaw ? (
+-                    <div className="flex flex-col items-center gap-6 py-2">
+-                      <div className="rounded-xl border border-border p-4 bg-white">
+-                        <QRCodeSVG value={qrRaw} size={208} />
+-                      </div>
+-                      <div className="text-center space-y-1">
+-                        <p className="text-xs text-muted-foreground">
+-                          Open WhatsApp, go to Settings &gt; Linked Devices &gt; Link a Device, then scan.
+-                        </p>
+-                        <p className="text-xs text-muted-foreground">
+-                          The code refreshes every 20 seconds — scan it quickly.
+-                        </p>
+-                      </div>
+-                      <Button variant="ghost" size="sm" onClick={() => void fetchQR()}>
+-                        <RefreshCw className="mr-2 h-4 w-4" />
+-                        Refresh
+-                      </Button>
+-                    </div>
+-                  ) : (
+-                    <div className="flex flex-col items-center gap-4 py-12">
+-                      <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" />
+-                      <p className="text-sm text-muted-foreground">Waiting for QR code...</p>
+-                    </div>
+-                  )}
+-                </TabsContent>
+-              </Tabs>
++              <div className="flex flex-col items-center gap-4 py-10 text-center">
++                <XCircle className="h-10 w-10 text-muted-foreground/40" />
++                <p className="text-sm text-muted-foreground max-w-sm">
++                  Not connected yet. Configure the Cloud API environment variables on the server,
++                  then set the webhook Callback URL and Verify Token in the Meta App dashboard.
++                </p>
++              </div>
+             )}
+           </CardContent>
+         </Card>
+@@ -283,10 +127,9 @@ export default function WhatsAppPage() {
+             <CardTitle className="font-serif text-base">How it works</CardTitle>
+           </CardHeader>
+           <CardContent className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+-            <p>1. Make sure your phone number is saved in your account settings.</p>
+-            <p>2. Connect using your phone number or QR code above.</p>
+-            <p>3. Once connected, say "good morning" to start your morning ritual.</p>
+-            <p>4. In the evening, say "wrapping up" or "evening review" to log your progress.</p>
++            <p>1. Sign up and save your phone number in Account Settings.</p>
++            <p>2. Message the bot number above — say "good morning" to start your ritual.</p>
++            <p>3. In the evening, say "wrapping up" or "evening review" to log your progress.</p>
+           </CardContent>
+         </Card>
+       </div>
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 45ee496..58f2908 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -49,9 +49,6 @@ services:
+         condition: service_healthy
+       migrate:
+         condition: service_completed_successfully
+-    volumes:
+-      # WhatsApp session must survive container restarts
+-      - whatsapp_auth:/app/.whatsapp-auth
+ 
+   # ── Web frontend (static build served by nginx) ───────────────────────────────
+   web:
+@@ -79,4 +76,3 @@ services:
+ 
+ volumes:
+   mysql_data:
+-  whatsapp_auth:
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index b890730..2762696 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -179,9 +179,6 @@ importers:
+       '@clerk/express':
+         specifier: ^2.0.8
+         version: 2.0.8(express@5.2.1)
+-      '@whiskeysockets/baileys':
+-        specifier: 7.0.0-rc.9
+-        version: 7.0.0-rc.9
+       '@workspace/api-zod':
+         specifier: workspace:*
+         version: link:../../lib/api-zod
+@@ -786,19 +783,6 @@ packages:
+     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
+     engines: {node: '>=6.9.0'}
+ 
+-  '@borewit/text-codec@0.2.2':
+-    resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+-
+-  '@cacheable/memory@2.0.8':
+-    resolution: {integrity: sha512-FvEb29x5wVwu/Kf93IWwsOOEuhHh6dYCJF3vcKLzXc0KXIW181AOzv6ceT4ZpBHDvAfG60eqb+ekmrnLHIy+jw==}
+-
+-  '@cacheable/node-cache@1.7.6':
+-    resolution: {integrity: sha512-6Omk2SgNnjtxB5f/E6bTIWIt5xhdpx39fGNRQgU9lojvRxU68v+qY+SXXLsp3ZGukqoPjsK21wZ6XABFr/Ge3A==}
+-    engines: {node: '>=18'}
+-
+-  '@cacheable/utils@2.4.1':
+-    resolution: {integrity: sha512-eiFgzCbIneyMlLOmNG4g9xzF7Hv3Mga4LjxjcSC/ues6VYq2+gUbQI8JqNuw/ZM8tJIeIaBGpswAsqV2V7ApgA==}
+-
+   '@clerk/backend@3.2.4':
+     resolution: {integrity: sha512-zEK0xE47dVZl1AAovMbiG95kxXjEt9A2RKNEmIJveuXoNdX5AK5yV6vdCEFTblhymlFAYvTr+NHIe6iJAtp50g==}
+     engines: {node: '>=20.9.0'}
+@@ -872,12 +856,6 @@ packages:
+       '@modelcontextprotocol/sdk':
+         optional: true
+ 
+-  '@hapi/boom@9.1.4':
+-    resolution: {integrity: sha512-Ls1oH8jaN1vNsqcaHVYJrKmgMcKsC1wcp8bujvXrHaAqD2iDYq3HoOwsxwo09Cuda5R5nC0o0IxlrlTuvPuzSw==}
+-
+-  '@hapi/hoek@9.3.0':
+-    resolution: {integrity: sha512-/c6rf4UJlmHlC9b5BaNvzAcFv7HZ2QHaV0D4/HNlBdvFnvQq8RI4kYdhyPCl7Xj+oWvTWQ8ujhqS53LIgAe6KQ==}
+-
+   '@hookform/resolvers@3.10.0':
+     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
+     peerDependencies:
+@@ -899,15 +877,6 @@ packages:
+   '@jridgewell/trace-mapping@0.3.31':
+     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+ 
+-  '@keyv/bigmap@1.3.1':
+-    resolution: {integrity: sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ==}
+-    engines: {node: '>= 18'}
+-    peerDependencies:
+-      keyv: ^5.6.0
+-
+-  '@keyv/serialize@1.1.1':
+-    resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
+-
+   '@nodelib/fs.scandir@2.1.5':
+     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
+     engines: {node: '>= 8'}
+@@ -1765,13 +1734,6 @@ packages:
+     peerDependencies:
+       react: ^18 || ^19
+ 
+-  '@tokenizer/inflate@0.4.1':
+-    resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
+-    engines: {node: '>=18'}
+-
+-  '@tokenizer/token@0.3.0':
+-    resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
+-
+   '@types/babel__core@7.20.5':
+     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
+ 
+@@ -1881,26 +1843,6 @@ packages:
+     peerDependencies:
+       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
+ 
+-  '@whiskeysockets/baileys@7.0.0-rc.9':
+-    resolution: {integrity: sha512-YFm5gKXfDP9byCXCW3OPHKXLzrAKzolzgVUlRosHHgwbnf2YOO3XknkMm6J7+F0ns8OA0uuSBhgkRHTDtqkacw==}
+-    engines: {node: '>=20.0.0'}
+-    deprecated: |-
+-      This version is affected by a zero-day vulnerability that allows spoofing of messages, please update to
+-        the latest versions (6.7.22^ or 7.0.0-rc12^)! For more information, check out the public advisory at
+-        https://github.com/WhiskeySockets/Baileys/security/advisories/GHSA-qvv5-jq5g-4cgg
+-    peerDependencies:
+-      audio-decode: ^2.1.3
+-      jimp: ^1.6.0
+-      link-preview-js: ^3.0.0
+-      sharp: '*'
+-    peerDependenciesMeta:
+-      audio-decode:
+-        optional: true
+-      jimp:
+-        optional: true
+-      link-preview-js:
+-        optional: true
+-
+   accepts@2.0.0:
+     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
+     engines: {node: '>= 0.6'}
+@@ -1947,9 +1889,6 @@ packages:
+     resolution: {integrity: sha512-ik3ZgC9dY/lYVVM++OISsaYDeg1tb0VtP5uL3ouh1koGOaUMDPpbFIei4JkFimWUFPn90sbMNMXQAIVOlnYKJA==}
+     engines: {node: '>=10'}
+ 
+-  async-mutex@0.5.0:
+-    resolution: {integrity: sha512-1A94B18jkJ3DYq284ohPxoXbfTA5HsQ7/Mf4DEhcyLx3Bz27Rh59iScbB6EPiP+B+joue6YCxcMXSbFC1tZKwA==}
+-
+   asynckit@0.4.0:
+     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
+ 
+@@ -2001,9 +1940,6 @@ packages:
+     resolution: {integrity: sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==}
+     engines: {node: '>= 0.8'}
+ 
+-  cacheable@2.3.4:
+-    resolution: {integrity: sha512-djgxybDbw9fL/ZWMI3+CE8ZilNxcwFkVtDc1gJ+IlOSSWkSMPQabhV/XCHTQ6pwwN6aivXPZ43omTooZiX06Ew==}
+-
+   call-bind-apply-helpers@1.0.2:
+     resolution: {integrity: sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==}
+     engines: {node: '>= 0.4'}
+@@ -2106,9 +2042,6 @@ packages:
+   csstype@3.2.3:
+     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+ 
+-  curve25519-js@0.0.4:
+-    resolution: {integrity: sha512-axn2UMEnkhyDUPWOwVKBMVIzSQy2ejH2xRGy1wq81dqRwApXfIzfbE3hIX0ZRFBIihf/KDqK158DLwESu4AK1w==}
+-
+   d3-array@3.2.4:
+     resolution: {integrity: sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg==}
+     engines: {node: '>=12'}
+@@ -2421,9 +2354,6 @@ packages:
+   eventemitter3@4.0.7:
+     resolution: {integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==}
+ 
+-  eventemitter3@5.0.4:
+-    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
+-
+   execa@9.6.1:
+     resolution: {integrity: sha512-9Be3ZoN4LmYR90tUoVu2te2BsbzHfhJyfEiAVfz7N5/zv+jduIfLrV2xdQXOHbaD6KgpGdO9PRPM1Y4Q9QkPkA==}
+     engines: {node: ^18.19.0 || >=20.5.0}
+@@ -2484,10 +2414,6 @@ packages:
+     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
+     engines: {node: '>=18'}
+ 
+-  file-type@21.3.4:
+-    resolution: {integrity: sha512-Ievi/yy8DS3ygGvT47PjSfdFoX+2isQueoYP1cntFW1JLYAuS4GD7NUPGg4zv2iZfV52uDyk5w5Z0TdpRS6Q1g==}
+-    engines: {node: '>=20'}
+-
+   fill-range@7.1.1:
+     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
+     engines: {node: '>=8'}
+@@ -2627,10 +2553,6 @@ packages:
+     resolution: {integrity: sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==}
+     engines: {node: '>= 0.4'}
+ 
+-  hashery@1.5.1:
+-    resolution: {integrity: sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ==}
+-    engines: {node: '>=20'}
+-
+   hasown@2.0.2:
+     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
+     engines: {node: '>= 0.4'}
+@@ -2638,12 +2560,6 @@ packages:
+   help-me@5.0.0:
+     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+ 
+-  hookified@1.15.1:
+-    resolution: {integrity: sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==}
+-
+-  hookified@2.1.1:
+-    resolution: {integrity: sha512-AHb76R16GB5EsPBE2J7Ko5kiEyXwviB9P5SMrAKcuAu4vJPZttViAbj9+tZeaQE5zjDme+1vcHP78Yj/WoAveA==}
+-
+   http-errors@2.0.1:
+     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
+     engines: {node: '>= 0.8'}
+@@ -2668,9 +2584,6 @@ packages:
+     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
+     engines: {node: '>=0.10.0'}
+ 
+-  ieee754@1.2.1:
+-    resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
+-
+   ignore@7.0.5:
+     resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
+     engines: {node: '>= 4'}
+@@ -2789,17 +2702,10 @@ packages:
+   jws@4.0.1:
+     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
+ 
+-  keyv@5.6.0:
+-    resolution: {integrity: sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw==}
+-
+   leven@4.1.0:
+     resolution: {integrity: sha512-KZ9W9nWDT7rF7Dazg8xyLHGLrmpgq2nVNFUckhqdW3szVP6YhCpp/RAnpmVExA9JvrMynjwSLVrEj3AepHR6ew==}
+     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+ 
+-  libsignal@https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7:
+-    resolution: {tarball: https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7}
+-    version: 6.0.0
+-
+   lightningcss-linux-x64-gnu@1.31.1:
+     resolution: {integrity: sha512-xGlFWRMl+0KvUhgySdIaReQdB4FNudfUTARn7q0hh/V67PVGCs3ADFjw+6++kG1RNd0zdGRlEKa+T13/tQjPMA==}
+     engines: {node: '>= 12.0.0'}
+@@ -2832,10 +2738,6 @@ packages:
+     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
+     hasBin: true
+ 
+-  lru-cache@11.3.5:
+-    resolution: {integrity: sha512-NxVFwLAnrd9i7KUBxC4DrUhmgjzOs+1Qm50D3oF1/oL+r1NpZ4gA7xvG0/zJ8evR7zIKn4vLf7qTNduWFtCrRw==}
+-    engines: {node: 20 || >=22}
+-
+   lru-cache@5.1.1:
+     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+ 
+@@ -2919,10 +2821,6 @@ packages:
+   ms@2.1.3:
+     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+ 
+-  music-metadata@11.12.3:
+-    resolution: {integrity: sha512-n6hSTZkuD59qWgHh6IP5dtDlDZQXoxk/bcA85Jywg8Z1iFrlNgl2+GTFgjZyn52W5UgQpV42V4XqrQZZAMbZTQ==}
+-    engines: {node: '>=18'}
+-
+   mysql2@3.23.2:
+     resolution: {integrity: sha512-fxh3HpQ8vJtu/Mmnd4Xsur19jGjHGzRLMxptiDtOkbX7EVBgnafGSGDx1WGGVmJLClVh2LeeBMMo24IFv8wCyQ==}
+     engines: {node: '>= 8.0'}
+@@ -3018,18 +2916,10 @@ packages:
+     resolution: {integrity: sha512-wPrq66Llhl7/4AGC6I+cqxT07LhXvWL08LNXz1fENOw0Ap4sRZZ/gZpTTJ5jpurzzzfS2W/Ge9BY3LgLjCShcw==}
+     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+ 
+-  p-queue@9.1.2:
+-    resolution: {integrity: sha512-ktsDOALzTYTWWF1PbkNVg2rOt+HaOaMWJMUnt7T3qf5tvZ1L8dBW3tObzprBcXNMKkwj+yFSLqHso0x+UFcJXw==}
+-    engines: {node: '>=20'}
+-
+   p-retry@4.6.2:
+     resolution: {integrity: sha512-312Id396EbJdvRONlngUx0NydfrIQ5lsYu0znKVUzVvArzEIt08V1qhtyESbGVd1FGX7UKtiFp5uwKZdM8wIuQ==}
+     engines: {node: '>=8'}
+ 
+-  p-timeout@7.0.1:
+-    resolution: {integrity: sha512-AxTM2wDGORHGEkPCt8yqxOTMgpfbEHqF51f/5fJCmwFC3C/zNcGT63SymH2ttOAaiIws2zVg4+izQCjrakcwHg==}
+-    engines: {node: '>=20'}
+-
+   p-try@2.2.0:
+     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
+     engines: {node: '>=6'}
+@@ -3195,10 +3085,6 @@ packages:
+     resolution: {integrity: sha512-uxFIHU0YlHYhDQtV4R9J6a52SLx28BCjT+4ieh7IGbgwVJWO+km431c4yRlREUAsAmt/uMjQUyQHNEPf0M39CA==}
+     engines: {node: '>=6'}
+ 
+-  qified@0.9.1:
+-    resolution: {integrity: sha512-n7mar4T0xQ+39dE2vGTAlbxUEpndwPANH0kDef1/MYsB8Bba9wshkybIRx74qgcvKQPEWErf9AqAdYjhzY2Ilg==}
+-    engines: {node: '>=20'}
+-
+   qrcode.react@4.2.0:
+     resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
+     peerDependencies:
+@@ -3513,10 +3399,6 @@ packages:
+       '@types/node':
+         optional: true
+ 
+-  strtok3@10.3.5:
+-    resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
+-    engines: {node: '>=18'}
+-
+   tailwind-merge@3.5.0:
+     resolution: {integrity: sha512-I8K9wewnVDkL1NTGoqWmVEIlUcB9gFriAEkXkfCjX5ib8ezGxtR3xD7iZIxrfArjEsH7F1CHD4RFUtxefdqV/A==}
+ 
+@@ -3550,10 +3432,6 @@ packages:
+     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
+     engines: {node: '>=0.6'}
+ 
+-  token-types@6.1.2:
+-    resolution: {integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==}
+-    engines: {node: '>=14.16'}
+-
+   tsconfck@3.1.6:
+     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
+     engines: {node: ^18 || >=20}
+@@ -3607,10 +3485,6 @@ packages:
+   uc.micro@2.1.0:
+     resolution: {integrity: sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A==}
+ 
+-  uint8array-extras@1.5.0:
+-    resolution: {integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==}
+-    engines: {node: '>=18'}
+-
+   undici-types@7.18.2:
+     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
+ 
+@@ -3729,9 +3603,6 @@ packages:
+     engines: {node: '>= 8'}
+     hasBin: true
+ 
+-  win-guid@0.2.1:
+-    resolution: {integrity: sha512-gEIQU4mkgl2OPeoNrWflcJFJ3Ae2BPd4eCsHHA/XikslkIVms/nHhvnvzIZV7VLmBvtFlDOzLt9rrZT+n6D67A==}
+-
+   wouter@3.9.0:
+     resolution: {integrity: sha512-sF/od/PIgqEQBQcrN7a2x3MX6MQE6nW0ygCfy9hQuUkuB28wEZuu/6M5GyqkrrEu9M6jxdkgE12yDFsQMKos4Q==}
+     peerDependencies:
+@@ -3912,26 +3783,6 @@ snapshots:
+       '@babel/helper-string-parser': 7.27.1
+       '@babel/helper-validator-identifier': 7.28.5
+ 
+-  '@borewit/text-codec@0.2.2': {}
+-
+-  '@cacheable/memory@2.0.8':
+-    dependencies:
+-      '@cacheable/utils': 2.4.1
+-      '@keyv/bigmap': 1.3.1(keyv@5.6.0)
+-      hookified: 1.15.1
+-      keyv: 5.6.0
+-
+-  '@cacheable/node-cache@1.7.6':
+-    dependencies:
+-      cacheable: 2.3.4
+-      hookified: 1.15.1
+-      keyv: 5.6.0
+-
+-  '@cacheable/utils@2.4.1':
+-    dependencies:
+-      hashery: 1.5.1
+-      keyv: 5.6.0
+-
+   '@clerk/backend@3.2.4':
+     dependencies:
+       '@clerk/shared': 4.4.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+@@ -4016,12 +3867,6 @@ snapshots:
+       - supports-color
+       - utf-8-validate
+ 
+-  '@hapi/boom@9.1.4':
+-    dependencies:
+-      '@hapi/hoek': 9.3.0
+-
+-  '@hapi/hoek@9.3.0': {}
+-
+   '@hookform/resolvers@3.10.0(react-hook-form@7.71.2(react@19.1.0))':
+     dependencies:
+       react-hook-form: 7.71.2(react@19.1.0)
+@@ -4045,14 +3890,6 @@ snapshots:
+       '@jridgewell/resolve-uri': 3.1.2
+       '@jridgewell/sourcemap-codec': 1.5.5
+ 
+-  '@keyv/bigmap@1.3.1(keyv@5.6.0)':
+-    dependencies:
+-      hashery: 1.5.1
+-      hookified: 1.15.1
+-      keyv: 5.6.0
+-
+-  '@keyv/serialize@1.1.1': {}
+-
+   '@nodelib/fs.scandir@2.1.5':
+     dependencies:
+       '@nodelib/fs.stat': 2.0.5
+@@ -5017,15 +4854,6 @@ snapshots:
+       '@tanstack/query-core': 5.90.20
+       react: 19.1.0
+ 
+-  '@tokenizer/inflate@0.4.1':
+-    dependencies:
+-      debug: 4.4.3
+-      token-types: 6.1.2
+-    transitivePeerDependencies:
+-      - supports-color
+-
+-  '@tokenizer/token@0.3.0': {}
+-
+   '@types/babel__core@7.20.5':
+     dependencies:
+       '@babel/parser': 7.29.0
+@@ -5156,23 +4984,6 @@ snapshots:
+     transitivePeerDependencies:
+       - supports-color
+ 
+-  '@whiskeysockets/baileys@7.0.0-rc.9':
+-    dependencies:
+-      '@cacheable/node-cache': 1.7.6
+-      '@hapi/boom': 9.1.4
+-      async-mutex: 0.5.0
+-      libsignal: https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7
+-      lru-cache: 11.3.5
+-      music-metadata: 11.12.3
+-      p-queue: 9.1.2
+-      pino: 9.14.0
+-      protobufjs: 7.5.5
+-      ws: 8.20.0
+-    transitivePeerDependencies:
+-      - bufferutil
+-      - supports-color
+-      - utf-8-validate
+-
+   accepts@2.0.0:
+     dependencies:
+       mime-types: 3.0.2
+@@ -5211,10 +5022,6 @@ snapshots:
+     dependencies:
+       tslib: 2.8.1
+ 
+-  async-mutex@0.5.0:
+-    dependencies:
+-      tslib: 2.8.1
+-
+   asynckit@0.4.0: {}
+ 
+   atomic-sleep@1.0.0: {}
+@@ -5271,14 +5078,6 @@ snapshots:
+ 
+   bytes@3.1.2: {}
+ 
+-  cacheable@2.3.4:
+-    dependencies:
+-      '@cacheable/memory': 2.0.8
+-      '@cacheable/utils': 2.4.1
+-      hookified: 1.15.1
+-      keyv: 5.6.0
+-      qified: 0.9.1
+-
+   call-bind-apply-helpers@1.0.2:
+     dependencies:
+       es-errors: 1.3.0
+@@ -5373,8 +5172,6 @@ snapshots:
+ 
+   csstype@3.2.3: {}
+ 
+-  curve25519-js@0.0.4: {}
+-
+   d3-array@3.2.4:
+     dependencies:
+       internmap: 2.0.3
+@@ -5559,8 +5356,6 @@ snapshots:
+ 
+   eventemitter3@4.0.7: {}
+ 
+-  eventemitter3@5.0.4: {}
+-
+   execa@9.6.1:
+     dependencies:
+       '@sindresorhus/merge-streams': 4.0.0
+@@ -5653,15 +5448,6 @@ snapshots:
+     dependencies:
+       is-unicode-supported: 2.1.0
+ 
+-  file-type@21.3.4:
+-    dependencies:
+-      '@tokenizer/inflate': 0.4.1
+-      strtok3: 10.3.5
+-      token-types: 6.1.2
+-      uint8array-extras: 1.5.0
+-    transitivePeerDependencies:
+-      - supports-color
+-
+   fill-range@7.1.1:
+     dependencies:
+       to-regex-range: 5.0.1
+@@ -5818,20 +5604,12 @@ snapshots:
+     dependencies:
+       has-symbols: 1.1.0
+ 
+-  hashery@1.5.1:
+-    dependencies:
+-      hookified: 1.15.1
+-
+   hasown@2.0.2:
+     dependencies:
+       function-bind: 1.1.2
+ 
+   help-me@5.0.0: {}
+ 
+-  hookified@1.15.1: {}
+-
+-  hookified@2.1.1: {}
+-
+   http-errors@2.0.1:
+     dependencies:
+       depd: 2.0.0
+@@ -5872,8 +5650,6 @@ snapshots:
+     dependencies:
+       safer-buffer: 2.1.2
+ 
+-  ieee754@1.2.1: {}
+-
+   ignore@7.0.5: {}
+ 
+   inherits@2.0.4: {}
+@@ -5956,17 +5732,8 @@ snapshots:
+       jwa: 2.0.1
+       safe-buffer: 5.2.1
+ 
+-  keyv@5.6.0:
+-    dependencies:
+-      '@keyv/serialize': 1.1.1
+-
+   leven@4.1.0: {}
+ 
+-  libsignal@https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/bcea72df9ec34d9d9140ab30619cf479c7c144c7:
+-    dependencies:
+-      curve25519-js: 0.0.4
+-      protobufjs: 7.5.5
+-
+   lightningcss-linux-x64-gnu@1.31.1:
+     optional: true
+ 
+@@ -5996,8 +5763,6 @@ snapshots:
+     dependencies:
+       js-tokens: 4.0.0
+ 
+-  lru-cache@11.3.5: {}
+-
+   lru-cache@5.1.1:
+     dependencies:
+       yallist: 3.1.1
+@@ -6068,21 +5833,6 @@ snapshots:
+ 
+   ms@2.1.3: {}
+ 
+-  music-metadata@11.12.3:
+-    dependencies:
+-      '@borewit/text-codec': 0.2.2
+-      '@tokenizer/token': 0.3.0
+-      content-type: 1.0.5
+-      debug: 4.4.3
+-      file-type: 21.3.4
+-      media-typer: 1.1.0
+-      strtok3: 10.3.5
+-      token-types: 6.1.2
+-      uint8array-extras: 1.5.0
+-      win-guid: 0.2.1
+-    transitivePeerDependencies:
+-      - supports-color
+-
+   mysql2@3.23.2(@types/node@25.3.5):
+     dependencies:
+       '@types/node': 25.3.5
+@@ -6195,18 +5945,11 @@ snapshots:
+     dependencies:
+       p-limit: 4.0.0
+ 
+-  p-queue@9.1.2:
+-    dependencies:
+-      eventemitter3: 5.0.4
+-      p-timeout: 7.0.1
+-
+   p-retry@4.6.2:
+     dependencies:
+       '@types/retry': 0.12.0
+       retry: 0.13.1
+ 
+-  p-timeout@7.0.1: {}
+-
+   p-try@2.2.0: {}
+ 
+   parse-ms@4.0.0: {}
+@@ -6390,10 +6133,6 @@ snapshots:
+ 
+   punycode.js@2.3.1: {}
+ 
+-  qified@0.9.1:
+-    dependencies:
+-      hookified: 2.1.1
+-
+   qrcode.react@4.2.0(react@19.1.0):
+     dependencies:
+       react: 19.1.0
+@@ -6698,10 +6437,6 @@ snapshots:
+     optionalDependencies:
+       '@types/node': 25.3.5
+ 
+-  strtok3@10.3.5:
+-    dependencies:
+-      '@tokenizer/token': 0.3.0
+-
+   tailwind-merge@3.5.0: {}
+ 
+   tailwindcss-animate@1.0.7(tailwindcss@4.2.1):
+@@ -6729,12 +6464,6 @@ snapshots:
+ 
+   toidentifier@1.0.1: {}
+ 
+-  token-types@6.1.2:
+-    dependencies:
+-      '@borewit/text-codec': 0.2.2
+-      '@tokenizer/token': 0.3.0
+-      ieee754: 1.2.1
+-
+   tsconfck@3.1.6(typescript@5.9.3):
+     optionalDependencies:
+       typescript: 5.9.3
+@@ -6777,8 +6506,6 @@ snapshots:
+ 
+   uc.micro@2.1.0: {}
+ 
+-  uint8array-extras@1.5.0: {}
+-
+   undici-types@7.18.2: {}
+ 
+   unicorn-magic@0.3.0: {}
+@@ -6868,8 +6595,6 @@ snapshots:
+     dependencies:
+       isexe: 2.0.0
+ 
+-  win-guid@0.2.1: {}
+-
+   wouter@3.9.0(react@19.1.0):
+     dependencies:
+       mitt: 3.0.1
