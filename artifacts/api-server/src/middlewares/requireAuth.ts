@@ -40,7 +40,6 @@ export async function requireAuth(
 
   if (!user) {
     const email = await fetchClerkEmail(clerkId);
-
     const shouldBeAdmin =
       ADMIN_BOOTSTRAP_EMAIL.length > 0 &&
       email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
@@ -92,42 +91,10 @@ export async function requireAuth(
     logger.info({ userId: user!.id }, "Auto-promoted bootstrap admin");
   }
 
-  // Keep persisted limits synchronized with the user's current tier.
-  // This also repairs older accounts whose tier changed without their limits
-  // being updated (for example an Elite user still carrying Free limits).
-  if (user) {
-    const tierConfig = getTierConfig(user.tier);
-    if (
-      user.dailyMessageCap !== tierConfig.dailyMessageCap ||
-      user.monthlyTokenAllowance !== tierConfig.monthlyTokenAllowance ||
-      user.monthlySkipCredits !== tierConfig.monthlySkipCredits
-    ) {
-      await db
-        .update(usersTable)
-        .set({
-          dailyMessageCap: tierConfig.dailyMessageCap,
-          monthlyTokenAllowance: tierConfig.monthlyTokenAllowance,
-          monthlySkipCredits: tierConfig.monthlySkipCredits,
-        })
-        .where(eq(usersTable.id, user.id));
-
-      [user] = await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.id, user.id));
-
-      logger.info(
-        {
-          userId: user!.id,
-          tier: user!.tier,
-          dailyMessageCap: tierConfig.dailyMessageCap,
-          monthlyTokenAllowance: tierConfig.monthlyTokenAllowance,
-        },
-        "Synchronized user limits with tier",
-      );
-    }
-  }
-
+  // User-level limits are persisted intentionally. The admin can apply the
+  // current plan to a user through /admin/users/:id/apply-plan; do not silently
+  // overwrite those values on every authenticated request because that would
+  // undo admin changes and make custom plan settings ineffective.
   if (user?.isSuspended) {
     res.status(403).json({ error: "Account suspended" });
     return;
