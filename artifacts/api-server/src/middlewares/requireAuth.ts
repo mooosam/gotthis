@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { getTierConfig } from "../lib/tierConfig.js";
 
 const ADMIN_BOOTSTRAP_EMAIL = (process.env.ADMIN_BOOTSTRAP_EMAIL ?? "")
   .trim()
@@ -43,6 +44,7 @@ export async function requireAuth(
     const shouldBeAdmin =
       ADMIN_BOOTSTRAP_EMAIL.length > 0 &&
       email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
+    const freeConfig = getTierConfig("free");
 
     // MySQL: use .ignore() instead of onConflictDoNothing(); no .returning() support
     await db
@@ -52,8 +54,8 @@ export async function requireAuth(
         id: clerkId,
         email,
         tier: "free",
-        dailyMessageCap: 5,
-        monthlyTokenAllowance: 50000,
+        dailyMessageCap: freeConfig.dailyMessageCap,
+        monthlyTokenAllowance: freeConfig.monthlyTokenAllowance,
         isAdmin: shouldBeAdmin,
       });
 
