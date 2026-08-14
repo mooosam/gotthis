@@ -10,6 +10,7 @@ import {
 } from "./context.js";
 import { loadFreshBudget } from "./usage.js";
 import { getActiveMilestone, getDateInTimezone } from "./streaks.js";
+import { getBaseUrl } from "../whatsapp/magic-link.js";
 
 export interface MorningRitualResult {
   response: string;
@@ -31,10 +32,7 @@ async function createMagicLink(userId: string, targetDate: string): Promise<stri
     expiresAt,
   });
 
-  const baseUrl = process.env.REPLIT_DOMAINS
-    ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
-    : "http://localhost:80";
-
+  const baseUrl = getBaseUrl();
   return `${baseUrl}/review/${targetDate}?token=${token}`;
 }
 
