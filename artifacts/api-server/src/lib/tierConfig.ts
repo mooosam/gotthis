@@ -3,7 +3,7 @@ export type Tier = "free" | "pro" | "elite";
 export const TIER_CONFIG = {
   free: {
     label: "Free",
-    dailyMessageCap: 5,
+    dailyMessageCap: 10,
     goalCountLimit: 3,
     monthlyTokenAllowance: 50_000,
     monthlySkipCredits: 4,
