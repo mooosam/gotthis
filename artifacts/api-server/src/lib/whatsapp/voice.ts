@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { logger } from "../logger.js";
 
 const GRAPH_VERSION = "v21.0";
@@ -43,36 +42,42 @@ export async function downloadWhatsAppMedia(mediaId: string): Promise<{
   };
 }
 
-/** Transcribe an audio message with the same Gemini stack used by GotThis. */
-export async function transcribeWithGemini(
+/** Transcribe WhatsApp audio with ElevenLabs Scribe. Gemini is intentionally not used for STT. */
+export async function transcribeWithElevenLabs(
   audio: Buffer,
   mimeType: string,
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new Error("ELEVENLABS_API_KEY is not configured");
 
-  const ai = new GoogleGenAI({ apiKey });
-  const model = process.env.GEMINI_VOICE_MODEL || "gemini-2.5-flash";
+  const form = new FormData();
+  form.append("model_id", process.env.ELEVENLABS_STT_MODEL_ID || "scribe_v2");
+  form.append("tag_audio_events", "false");
+  form.append(
+    "file",
+    new Blob([audio], { type: mimeType.split(";")[0] || "audio/ogg" }),
+    "whatsapp-voice.ogg",
+  );
 
-  const result = await ai.models.generateContent({
-    model,
-    contents: [
-      {
-        inlineData: {
-          data: audio.toString("base64"),
-          mimeType: mimeType.split(";")[0],
-        },
-      },
-      {
-        text: "Transcribe this WhatsApp voice note exactly as spoken. Return only the transcription, with no commentary. Preserve the user's meaning and numbers.",
-      },
-    ],
+  const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    method: "POST",
+    headers: { "xi-api-key": apiKey },
+    body: form,
   });
 
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`ElevenLabs STT failed: ${response.status} ${body.slice(0, 300)}`);
+  }
+
+  const result = (await response.json()) as { text?: string };
   const text = result.text?.trim() ?? "";
-  if (!text) throw new Error("Gemini returned an empty transcription");
+  if (!text) throw new Error("ElevenLabs returned an empty transcription");
   return text;
 }
+
+/** @deprecated Kept as an alias for compatibility with existing imports. */
+export const transcribeWithGemini = transcribeWithElevenLabs;
 
 /** Generate an MP3 response with ElevenLabs. Returns null when voice replies are not configured. */
 export async function generateElevenLabsAudio(text: string): Promise<Buffer | null> {
@@ -94,10 +99,7 @@ export async function generateElevenLabsAudio(text: string): Promise<Buffer | nu
         "Content-Type": "application/json",
         Accept: "audio/mpeg",
       },
-      body: JSON.stringify({
-        text,
-        model_id: modelId,
-      }),
+      body: JSON.stringify({ text, model_id: modelId }),
     },
   );
 
@@ -161,14 +163,7 @@ export async function sendWhatsAppAudio(to: string, mediaId: string): Promise<vo
   }
 }
 
-/** Best-effort voice response: never prevent the text response from being sent. */
-export async function sendVoiceReply(to: string, text: string): Promise<void> {
-  try {
-    const audio = await generateElevenLabsAudio(text);
-    if (!audio) return;
-    const mediaId = await uploadWhatsAppAudio(audio);
-    await sendWhatsAppAudio(to, mediaId);
-  } catch (err) {
-    logger.error({ err }, "Failed to generate/send WhatsApp voice reply");
-  }
+/** Best-effort voice response retained for compatibility; voice replies are disabled in the current text-only mode. */
+export async function sendVoiceReply(_to: string, _text: string): Promise<void> {
+  logger.debug("Voice reply skipped; GotThis is configured for text-only responses");
 }
