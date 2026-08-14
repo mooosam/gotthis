@@ -158,6 +158,29 @@ export default function DashboardPage() {
           </span>
         </div>
 
+        {/* ── Connect to WhatsApp ── */}
+        <a
+          href="https://wa.me/message/XJSBCCYJ5KCPH1"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display:        "flex",
+            alignItems:     "center",
+            justifyContent: "center",
+            gap:            8,
+            background:     "#25D366",
+            color:          "#FFFFFF",
+            fontSize:       14,
+            fontWeight:     600,
+            borderRadius:   12,
+            padding:        "14px 20px",
+            textDecoration: "none",
+          }}
+          data-testid="link-connect-whatsapp"
+        >
+          Connect to WhatsApp
+        </a>
+
         {/* ── Write an update ── */}
         <div
           style={{

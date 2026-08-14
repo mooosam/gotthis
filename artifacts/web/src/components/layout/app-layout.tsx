@@ -116,7 +116,6 @@ function Sidebar({
       href: `/review/${new Date().toISOString().split("T")[0]}`,
       label: "Review",
     },
-    { href: "/whatsapp", label: "WhatsApp" },
     { href: "/account", label: "Settings" },
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];

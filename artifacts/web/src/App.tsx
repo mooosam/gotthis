@@ -24,7 +24,6 @@ import GoalsPage from "@/pages/goals";
 import GoalDetailPage from "@/pages/goal-detail";
 import ReviewPage from "@/pages/review";
 import AccountPage from "@/pages/account";
-import WhatsAppPage from "@/pages/whatsapp";
 import SharePage from "@/pages/share";
 import AdminOverviewPage from "@/pages/admin";
 import AdminUsersPage from "@/pages/admin/users";
@@ -203,11 +202,6 @@ function ClerkProviderWithRoutes() {
 
           <Route path="/account">
             <Show when="signed-in"><AccountPage /></Show>
-            <Show when="signed-out"><Redirect to="/" /></Show>
-          </Route>
-
-          <Route path="/whatsapp">
-            <Show when="signed-in"><WhatsAppPage /></Show>
             <Show when="signed-out"><Redirect to="/" /></Show>
           </Route>
 
