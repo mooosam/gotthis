@@ -5,6 +5,7 @@ export type MessageIntent =
   | "morning_ritual"
   | "evening_ritual"
   | "goal_update"
+  | "dashboard"
   | "check_in"
   | "off_topic"
   | "error";
@@ -36,6 +37,19 @@ const EVENING_PATTERNS = [
   /\breflect.*day\b/i,
   /\ball done.*today\b/i,
   /\bday is over\b/i,
+];
+
+const DASHBOARD_PATTERNS = [
+  /\bdashboard\b/i,
+  /\bshow\s+(me\s+)?(my\s+)?(goal|progress|performance|stats|statistics|overview|summary|graph|chart)/i,
+  /\b(my|the)\s+(goal|progress|performance|stats|statistics|overview|summary|graph|chart)\b/i,
+  /\bhow\s+am\s+i\s+doing\b/i,
+  /\bshow\s+me\s+how\s+i\s*(?:am|m)\s+doing\b/i,
+  /\bsee\s+(my\s+)?(progress|goals|stats|statistics|performance|overview)/i,
+  /\bview\s+(my\s+)?(progress|goals|stats|statistics|performance|overview)/i,
+  /\bvisuali[sz]e\s+(my\s+)?(progress|goals|performance|stats)/i,
+  /\bgraph\s+(of|for|showing)\s+(my\s+)?(progress|goals|performance)/i,
+  /\bchart\s+(of|for|showing)\s+(my\s+)?(progress|goals|performance)/i,
 ];
 
 const GOAL_UPDATE_PATTERNS = [
@@ -114,6 +128,7 @@ function hasAnyKnownPattern(message: string): boolean {
   return (
     MORNING_PATTERNS.some((p) => p.test(text)) ||
     EVENING_PATTERNS.some((p) => p.test(text)) ||
+    DASHBOARD_PATTERNS.some((p) => p.test(text)) ||
     GOAL_UPDATE_PATTERNS.some((p) => p.test(text)) ||
     OFF_TOPIC_PATTERNS.some((p) => p.test(text)) ||
     INJECTION_PATTERNS.some((p) => p.test(text))
@@ -141,6 +156,9 @@ export function classifyIntentKeywords(message: string): MessageIntent {
   }
   for (const pattern of EVENING_PATTERNS) {
     if (pattern.test(message)) return "evening_ritual";
+  }
+  for (const pattern of DASHBOARD_PATTERNS) {
+    if (pattern.test(message)) return "dashboard";
   }
   for (const pattern of GOAL_UPDATE_PATTERNS) {
     if (pattern.test(message)) return "goal_update";
@@ -192,6 +210,7 @@ export async function classifyIntentWithFallback(
 Categories:
 - morning_ritual: user is starting their day or doing a morning check-in
 - evening_ritual: user is ending their day or doing an evening reflection
+- dashboard: user wants to see, view, open, check, or get an overview/visualization of their own goals, progress, performance, statistics, charts, graphs, or dashboard. This includes natural requests such as "show me a graph", "how am I doing", "let me see my progress", "what does my progress look like", or "give me an overview"
 - goal_update: user is reporting progress on a goal
 - check_in: general goal-related question or mid-day message
 - off_topic: message has nothing to do with goals or daily rituals
@@ -206,6 +225,7 @@ Category:`,
     const valid: MessageIntent[] = [
       "morning_ritual",
       "evening_ritual",
+      "dashboard",
       "goal_update",
       "check_in",
       "off_topic",
