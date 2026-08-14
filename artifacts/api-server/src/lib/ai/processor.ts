@@ -19,17 +19,12 @@ export interface ProcessMessageResult {
   };
 }
 
-// Hard cap on the user-supplied message length passed to Claude. Both the
-// dashboard route and the WhatsApp handler clamp at this length defensively
-// so a single jumbo payload cannot inflate token usage past the budget guard.
 const MAX_USER_MESSAGE_CHARS = 1000;
 
 export async function processMessage(
   userId: string,
   message: string,
 ): Promise<ProcessMessageResult> {
-  // Per-minute burst throttle. Sits ahead of the classifier and budget checks
-  // so a scripted attacker cannot even trigger the cheap Haiku classifier.
   const throttle = checkPerMinuteThrottle(userId);
   if (!throttle.allowed) {
     return {
@@ -40,16 +35,11 @@ export async function processMessage(
     };
   }
 
-  // Clamp incoming user text. Anything past the cap is silently truncated for
-  // the AI; users almost never need more than 1k characters for a goal update.
   const safeMessage =
     message.length > MAX_USER_MESSAGE_CHARS
       ? message.slice(0, MAX_USER_MESSAGE_CHARS)
       : message;
 
-  // Context assembly can throw if the user record is missing or the DB query
-  // fails. Surface a user-friendly reply rather than letting callers (the AI
-  // dashboard route, WhatsApp handler, etc.) see a 500.
   let ctx;
   try {
     ctx = await assembleContext(userId);
@@ -76,8 +66,6 @@ export async function processMessage(
   const classification = await classifyIntentWithFallback(safeMessage, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
 
-  // Classifier could not determine intent (Haiku fallback failed). Surface a
-  // user-friendly error rather than silently routing to the general handler.
   if (intent === "error") {
     return {
       reply: "I had trouble understanding that. Please try rephrasing — for example, share what you worked on today or how your morning is going.",
@@ -87,10 +75,6 @@ export async function processMessage(
     };
   }
 
-  // If the classifier used Claude (AI fallback), apply those tokens to a provisional
-  // in-memory budget check before running the more expensive handler call.  This
-  // prevents a user who is at the edge of their monthly allowance from consuming a
-  // second model call after the classifier already pushed them over the limit.
   if (classification.inputTokens > 0 || classification.outputTokens > 0) {
     const provisionalUser = {
       ...ctx.user,
@@ -99,7 +83,6 @@ export async function processMessage(
     };
     const provisionalBudget = checkBudgetForUser(provisionalUser);
     if (!provisionalBudget.allowed) {
-      // Persist classifier tokens so usage is accurately accounted for.
       await recordUsage(userId, classification.inputTokens, classification.outputTokens, 0);
       return {
         reply: provisionalBudget.reason ?? "You have reached your usage limit.",
@@ -114,10 +97,11 @@ export async function processMessage(
   let totalInputTokens = classification.inputTokens;
   let totalOutputTokens = classification.outputTokens;
   let totalCacheHitTokens = 0;
-
   let reply: string;
 
-  if (intent === "off_topic") {
+  if (intent === "dashboard") {
+    reply = `Here’s your GotThis dashboard:\n\nhttps://gotthis.one/dashboard`;
+  } else if (intent === "off_topic") {
     reply = OFF_TOPIC_REPLY;
   } else if (intent === "morning_ritual") {
     const result = await runMorningRitual(ctx, safeMessage);
@@ -139,8 +123,6 @@ export async function processMessage(
     totalCacheHitTokens += result.cacheHitTokens;
   }
 
-  // Record all accumulated usage (classifier + handler) in one write.  This also
-  // increments the daily message count exactly once per user-facing interaction.
   await recordUsage(userId, totalInputTokens, totalOutputTokens, totalCacheHitTokens);
 
   const { budget: freshBudget } = await loadFreshBudget(userId);
