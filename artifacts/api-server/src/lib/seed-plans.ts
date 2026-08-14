@@ -10,7 +10,7 @@ const DEFAULT_PLANS = [
     slug: "free",
     name: "Free",
     description: "Get started with basic goal coaching.",
-    dailyMessageCap: 5,
+    dailyMessageCap: 10,
     monthlyTokenAllowance: 50_000,
     monthlySkipCredits: 4,
     priceCents: 0,
