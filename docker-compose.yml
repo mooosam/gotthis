@@ -57,7 +57,8 @@ services:
       dockerfile: artifacts/web/Dockerfile
       args:
         # Baked into the JS bundle at build time — must match CLERK_PUBLISHABLE_KEY
-        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+         VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+         VITE_CLERK_PROXY_URL: ${VITE_CLERK_PROXY_URL}
     restart: unless-stopped
 
   # ── Reverse proxy ─────────────────────────────────────────────────────────────
