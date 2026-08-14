@@ -18,6 +18,11 @@ import {
 
 const app: Express = express();
 
+// The API sits behind nginx in production. Trust exactly one proxy hop so
+// Express/rate-limit can use X-Forwarded-For without treating every request as
+// coming from the nginx container. This also prevents ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set("trust proxy", 1);
+
 // WhatsApp Cloud API webhook verification handshake. Meta calls this once
 // (as a GET) when you save the Callback URL + Verify Token in the app
 // dashboard. No signature to check here — just echo back hub.challenge.
@@ -139,8 +144,8 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
   next(err);
 });
 
-// Global rate limiter — 200 req/min per IP for all non-webhook routes.
-// AI endpoints layer their own tighter per-user throttles on top of this.
+// Global rate limiter — 200 req/min per client IP for all non-webhook routes.
+// AI endpoints layer their own tighter per-user throttles on top.
 // Webhook routes are registered before this middleware runs, so they're exempt.
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
