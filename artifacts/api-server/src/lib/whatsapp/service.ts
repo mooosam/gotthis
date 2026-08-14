@@ -8,16 +8,16 @@ import { checkBudgetForUser } from "../ai/usage.js";
 import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
 import type { User } from "@workspace/db";
+import {
+  downloadWhatsAppMedia,
+  sendVoiceReply,
+  transcribeWithGemini,
+} from "./voice.js";
 
 export type WAStatus = "disconnected" | "open";
 
-// ---------------------------------------------------------------------------
-// Bounded TTL cache for message IDs — Meta can redeliver the same webhook
-// event on retry (e.g. if we're slow to respond), so we dedupe on message id.
-// ---------------------------------------------------------------------------
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const SWEEP_MS = 5 * 60 * 1000; //  5 minutes
-
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const SWEEP_MS = 5 * 60 * 1000;
 const msgCache = new Map<string, number>();
 
 function cacheHas(id: string): boolean {
@@ -53,10 +53,6 @@ export function getConnectedPhone(): string | null {
   return process.env.WHATSAPP_DISPLAY_PHONE ?? null;
 }
 
-// ---------------------------------------------------------------------------
-// Webhook verification (GET handshake) — Meta calls this once when you save
-// the Callback URL / Verify Token in the app dashboard.
-// ---------------------------------------------------------------------------
 export function verifyWebhookChallenge(
   mode: string | undefined,
   token: string | undefined,
@@ -69,10 +65,6 @@ export function verifyWebhookChallenge(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Webhook signature verification (POST events) — Meta signs every webhook
-// delivery with your app secret so you can confirm it's really from Meta.
-// ---------------------------------------------------------------------------
 export function verifyCloudApiSignature(
   rawBody: Buffer,
   signatureHeader: string | undefined,
@@ -154,33 +146,26 @@ export async function sendToJid(to: string, text: string): Promise<void> {
 async function handleIncomingMessage(
   phone: string,
   text: string,
+  replyWithVoice = false,
 ): Promise<void> {
   const user = await findUserByPhone(phone);
 
-  if (!user) {
-    // Silently ignore messages from numbers with no linked app account.
-    return;
-  }
+  if (!user) return;
 
-  // Handle utility commands before onboarding/budget checks. These commands
-  // should always remain available, including when the user has exhausted
-  // their AI message allowance.
   const command = text.trim().toLowerCase();
   if (command === "dashboard" || command === "dash") {
     const base = getBaseUrl();
-    await sendTracked(
-      phone,
-      `Here’s your GotThis dashboard:\n\n${base}/dashboard`,
-    );
+    const reply = `Here’s your GotThis dashboard:\n\n${base}/dashboard`;
+    await sendTracked(phone, reply);
+    if (replyWithVoice) await sendVoiceReply(phone, reply);
     return;
   }
 
   if (!user.onboardingCompleted) {
     const base = getBaseUrl();
-    await sendTracked(
-      phone,
-      `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`,
-    );
+    const reply = `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`;
+    await sendTracked(phone, reply);
+    if (replyWithVoice) await sendVoiceReply(phone, reply);
     return;
   }
 
@@ -190,10 +175,9 @@ async function handleIncomingMessage(
     const upgradeHint = budgetCheck.upgradePrompt
       ? `\n\n👉 Upgrade now: ${base}/pricing`
       : "";
-    await sendTracked(
-      phone,
-      (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint,
-    );
+    const reply = (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint;
+    await sendTracked(phone, reply);
+    if (replyWithVoice) await sendVoiceReply(phone, reply);
     return;
   }
 
@@ -206,7 +190,7 @@ async function handleIncomingMessage(
   const result = await processMessage(user.id, text);
 
   logger.info(
-    { phone: phone.slice(-4) + "****", intent: result.intent },
+    { phone: phone.slice(-4) + "****", intent: result.intent, voice: replyWithVoice },
     "WhatsApp message processed",
   );
 
@@ -234,18 +218,15 @@ async function handleIncomingMessage(
   }
 
   await sendTracked(phone, reply);
+  if (replyWithVoice) await sendVoiceReply(phone, reply);
 }
 
-// ---------------------------------------------------------------------------
-// Cloud API webhook payload shape (POST body, already signature-verified):
-// entry[].changes[].value.messages[] — incoming user messages
-// entry[].changes[].value.statuses[] — delivery/read receipts (ignored)
-// ---------------------------------------------------------------------------
 interface CloudApiMessage {
   from: string;
   id: string;
   type: string;
   text?: { body: string };
+  audio?: { id: string; mime_type?: string };
 }
 interface CloudApiWebhookBody {
   entry?: Array<{
@@ -262,27 +243,40 @@ export async function processWebhookPayload(
     for (const change of entry.changes ?? []) {
       const messages = change.value?.messages ?? [];
       for (const msg of messages) {
-        if (msg.type !== "text") continue;
+        if (msg.type !== "text" && msg.type !== "audio") continue;
         if (cacheHas(msg.id)) continue;
         cacheSet(msg.id);
 
         const phone = msg.from;
-        const text = msg.text?.body ?? "";
-        if (!text.trim()) continue;
-
-        logger.info(
-          { phone: phone.slice(-4) + "****" },
-          "Incoming WhatsApp message",
-        );
+        let text = "";
+        let replyWithVoice = false;
 
         try {
-          await handleIncomingMessage(phone, text);
+          if (msg.type === "audio" && msg.audio?.id) {
+            replyWithVoice = true;
+            logger.info(
+              { phone: phone.slice(-4) + "****", mediaId: msg.audio.id },
+              "Incoming WhatsApp voice message",
+            );
+            const media = await downloadWhatsAppMedia(msg.audio.id);
+            text = await transcribeWithGemini(media.data, media.mimeType);
+            logger.info(
+              { phone: phone.slice(-4) + "****", transcription: text },
+              "WhatsApp voice message transcribed",
+            );
+          } else {
+            text = msg.text?.body ?? "";
+          }
+
+          if (!text.trim()) continue;
+          await handleIncomingMessage(phone, text, replyWithVoice);
         } catch (err) {
           logger.error({ err }, "Error handling WhatsApp message");
-          await sendTracked(
-            phone,
-            "Something went wrong. Please try again in a moment.",
-          );
+          const reply = replyWithVoice
+            ? "I couldn't understand that voice note. Please try sending it again."
+            : "Something went wrong. Please try again in a moment.";
+          await sendTracked(phone, reply);
+          if (replyWithVoice) await sendVoiceReply(phone, reply);
         }
       }
     }
