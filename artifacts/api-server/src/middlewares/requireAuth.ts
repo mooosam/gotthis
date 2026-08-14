@@ -92,6 +92,42 @@ export async function requireAuth(
     logger.info({ userId: user!.id }, "Auto-promoted bootstrap admin");
   }
 
+  // Keep persisted limits synchronized with the user's current tier.
+  // This also repairs older accounts whose tier changed without their limits
+  // being updated (for example an Elite user still carrying Free limits).
+  if (user) {
+    const tierConfig = getTierConfig(user.tier);
+    if (
+      user.dailyMessageCap !== tierConfig.dailyMessageCap ||
+      user.monthlyTokenAllowance !== tierConfig.monthlyTokenAllowance ||
+      user.monthlySkipCredits !== tierConfig.monthlySkipCredits
+    ) {
+      await db
+        .update(usersTable)
+        .set({
+          dailyMessageCap: tierConfig.dailyMessageCap,
+          monthlyTokenAllowance: tierConfig.monthlyTokenAllowance,
+          monthlySkipCredits: tierConfig.monthlySkipCredits,
+        })
+        .where(eq(usersTable.id, user.id));
+
+      [user] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, user.id));
+
+      logger.info(
+        {
+          userId: user!.id,
+          tier: user!.tier,
+          dailyMessageCap: tierConfig.dailyMessageCap,
+          monthlyTokenAllowance: tierConfig.monthlyTokenAllowance,
+        },
+        "Synchronized user limits with tier",
+      );
+    }
+  }
+
   if (user?.isSuspended) {
     res.status(403).json({ error: "Account suspended" });
     return;
