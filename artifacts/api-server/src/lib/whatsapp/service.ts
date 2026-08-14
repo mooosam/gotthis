@@ -162,6 +162,19 @@ async function handleIncomingMessage(
     return;
   }
 
+  // Handle utility commands before onboarding/budget checks. These commands
+  // should always remain available, including when the user has exhausted
+  // their AI message allowance.
+  const command = text.trim().toLowerCase();
+  if (command === "dashboard" || command === "dash") {
+    const base = getBaseUrl();
+    await sendTracked(
+      phone,
+      `Here’s your GotThis dashboard:\n\n${base}/dashboard`,
+    );
+    return;
+  }
+
   if (!user.onboardingCompleted) {
     const base = getBaseUrl();
     await sendTracked(
