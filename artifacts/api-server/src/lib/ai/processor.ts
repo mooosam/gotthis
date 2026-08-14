@@ -1,6 +1,7 @@
 import { assembleContext } from "./context.js";
 import { checkBudgetForUser, recordUsage, loadFreshBudget } from "./usage.js";
-import { classifyIntentWithFallback } from "./classifier.js";
+import { determineIntent } from "./intent.js";
+import { validateUserMessage } from "./policy.js";
 import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
@@ -20,13 +21,11 @@ export interface ProcessMessageResult {
   };
 }
 
-const MAX_USER_MESSAGE_CHARS = 1000;
-
 export async function processMessage(
   userId: string,
   message: string,
 ): Promise<ProcessMessageResult> {
-  // Throttle before classification so rapid repeat messages do not consume
+  // Throttle before AI intent detection so rapid repeat messages do not consume
   // Gemini tokens or other AI budget while the user is rate limited.
   const throttle = checkPerMinuteThrottle(userId);
   if (!throttle.allowed) {
@@ -38,13 +37,19 @@ export async function processMessage(
     };
   }
 
-  // Keep untrusted user input bounded before sending it to the classifier and
-  // downstream prompts, preventing unexpectedly large messages from consuming
-  // excessive context/tokens.
-  const safeMessage =
-    message.length > MAX_USER_MESSAGE_CHARS
-      ? message.slice(0, MAX_USER_MESSAGE_CHARS)
-      : message;
+  // Validate untrusted user input before it reaches any model. Oversized,
+  // injection-like, destructive, and bulk requests are rejected server-side.
+  const policy = validateUserMessage(message);
+  if (!policy.allowed) {
+    return {
+      reply: policy.reply,
+      intent: policy.reason,
+      dailyRemaining: 0,
+      monthlyTokenRemaining: 0,
+    };
+  }
+
+  const safeMessage = policy.normalizedMessage;
 
   let ctx;
   try {
@@ -71,21 +76,15 @@ export async function processMessage(
     };
   }
 
-  const classification = await classifyIntentWithFallback(safeMessage, initialBudget.monthlyTokenRemaining);
+  const classification = await determineIntent(
+    safeMessage,
+    initialBudget.monthlyTokenRemaining,
+  );
   const { intent } = classification;
 
-  if (intent === "error") {
-    return {
-      reply: "I had trouble understanding that. Please try rephrasing — for example, share what you worked on today or how your morning is going.",
-      intent: "error",
-      dailyRemaining: initialBudget.dailyRemaining,
-      monthlyTokenRemaining: initialBudget.monthlyTokenRemaining,
-    };
-  }
-
-  // Classification consumes tokens before the final handler runs. Check the
-  // provisional total here so a message cannot start an AI operation that would
-  // push the user over their monthly allowance.
+  // Gemini intent detection consumes tokens before the final handler runs. Check
+  // the provisional total here so a message cannot start another AI operation
+  // that would push the user over their monthly allowance.
   if (classification.inputTokens > 0 || classification.outputTokens > 0) {
     const provisionalUser = {
       ...ctx.user,
@@ -110,8 +109,11 @@ export async function processMessage(
   let totalCacheHitTokens = 0;
   let reply: string;
 
-  if (intent === "dashboard") {
-    reply = `Here’s your GotThis dashboard:\n\n${getBaseUrl()}/dashboard`;
+  if (intent === "dashboard" || intent === "goal_create") {
+    const base = getBaseUrl();
+    reply = intent === "goal_create"
+      ? `Absolutely. You can add your goal or milestone here:\n\n${base}/dashboard`
+      : `Here’s your GotThis dashboard:\n\n${base}/dashboard`;
   } else if (intent === "off_topic") {
     reply = OFF_TOPIC_REPLY;
   } else if (intent === "morning_ritual") {

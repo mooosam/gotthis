@@ -8,16 +8,14 @@ import { checkBudgetForUser } from "../ai/usage.js";
 import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
 import type { User } from "@workspace/db";
-import {
-  downloadWhatsAppMedia,
-  sendVoiceReply,
-  transcribeWithGemini,
-} from "./voice.js";
+import { downloadWhatsAppMedia, transcribeWithElevenLabs } from "./voice.js";
+import { validateVoiceTranscription } from "../ai/policy.js";
 
 export type WAStatus = "disconnected" | "open";
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const SWEEP_MS = 5 * 60 * 1000;
+const MAX_VOICE_AUDIO_BYTES = 10 * 1024 * 1024;
 const msgCache = new Map<string, number>();
 
 function cacheHas(id: string): boolean {
@@ -143,11 +141,7 @@ export async function sendToJid(to: string, text: string): Promise<void> {
   await sendTracked(to, text);
 }
 
-async function handleIncomingMessage(
-  phone: string,
-  text: string,
-  replyWithVoice = false,
-): Promise<void> {
+async function handleIncomingMessage(phone: string, text: string): Promise<void> {
   const user = await findUserByPhone(phone);
 
   if (!user) return;
@@ -157,7 +151,6 @@ async function handleIncomingMessage(
     const base = getBaseUrl();
     const reply = `Here’s your GotThis dashboard:\n\n${base}/dashboard`;
     await sendTracked(phone, reply);
-    if (replyWithVoice) await sendVoiceReply(phone, reply);
     return;
   }
 
@@ -165,7 +158,6 @@ async function handleIncomingMessage(
     const base = getBaseUrl();
     const reply = `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`;
     await sendTracked(phone, reply);
-    if (replyWithVoice) await sendVoiceReply(phone, reply);
     return;
   }
 
@@ -177,7 +169,6 @@ async function handleIncomingMessage(
       : "";
     const reply = (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint;
     await sendTracked(phone, reply);
-    if (replyWithVoice) await sendVoiceReply(phone, reply);
     return;
   }
 
@@ -190,7 +181,7 @@ async function handleIncomingMessage(
   const result = await processMessage(user.id, text);
 
   logger.info(
-    { phone: phone.slice(-4) + "****", intent: result.intent, voice: replyWithVoice },
+    { phone: phone.slice(-4) + "****", intent: result.intent, voice: false },
     "WhatsApp message processed",
   );
 
@@ -218,7 +209,6 @@ async function handleIncomingMessage(
   }
 
   await sendTracked(phone, reply);
-  if (replyWithVoice) await sendVoiceReply(phone, reply);
 }
 
 interface CloudApiMessage {
@@ -249,19 +239,29 @@ export async function processWebhookPayload(
 
         const phone = msg.from;
         let text = "";
-        let replyWithVoice = false;
 
         try {
           if (msg.type === "audio" && msg.audio?.id) {
-            replyWithVoice = true;
             logger.info(
               { phone: phone.slice(-4) + "****", mediaId: msg.audio.id },
               "Incoming WhatsApp voice message",
             );
             const media = await downloadWhatsAppMedia(msg.audio.id);
-            text = await transcribeWithGemini(media.data, media.mimeType);
+            if (media.data.length > MAX_VOICE_AUDIO_BYTES) {
+              await sendTracked(phone, "That voice note is too large. Please send a shorter voice note and try again.");
+              continue;
+            }
+
+            text = await transcribeWithElevenLabs(media.data, media.mimeType);
+            const voicePolicy = validateVoiceTranscription(text);
+            if (!voicePolicy.allowed) {
+              await sendTracked(phone, voicePolicy.reply);
+              continue;
+            }
+            text = voicePolicy.normalizedMessage;
+
             logger.info(
-              { phone: phone.slice(-4) + "****", transcription: text },
+              { phone: phone.slice(-4) + "****", transcriptionChars: text.length },
               "WhatsApp voice message transcribed",
             );
           } else {
@@ -269,14 +269,10 @@ export async function processWebhookPayload(
           }
 
           if (!text.trim()) continue;
-          await handleIncomingMessage(phone, text, replyWithVoice);
+          await handleIncomingMessage(phone, text);
         } catch (err) {
           logger.error({ err }, "Error handling WhatsApp message");
-          const reply = replyWithVoice
-            ? "I couldn't understand that voice note. Please try sending it again."
-            : "Something went wrong. Please try again in a moment.";
-          await sendTracked(phone, reply);
-          if (replyWithVoice) await sendVoiceReply(phone, reply);
+          await sendTracked(phone, "Something went wrong. Please try again in a moment.");
         }
       }
     }
