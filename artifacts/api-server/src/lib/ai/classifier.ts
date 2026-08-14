@@ -41,15 +41,20 @@ const EVENING_PATTERNS = [
 
 const DASHBOARD_PATTERNS = [
   /\bdashboard\b/i,
-  /\bshow\s+(me\s+)?(my\s+)?(goal|progress|performance|stats|statistics|overview|summary|graph|chart)/i,
-  /\b(my|the)\s+(goal|progress|performance|stats|statistics|overview|summary|graph|chart)\b/i,
+  /\b(show|list|tell)\s+(me\s+)?(my\s+)?(current\s+)?goals?\b/i,
+  /\bwhat\s+(are|r)\s+(my|the)\s+(current\s+)?goals?\b/i,
+  /\bwhat\s+goals?\s+(do|have)\s+i\b/i,
+  /\bshow\s+(me\s+)?(my\s+)?(goal|progress|performance|stats|statistics|overview|summary|graph|chart)s?\b/i,
+  /\b(my|the)\s+(goal|progress|performance|stats|statistics|overview|summary|graph|chart)s?\b/i,
   /\bhow\s+am\s+i\s+doing\b/i,
   /\bshow\s+me\s+how\s+i\s*(?:am|m)\s+doing\b/i,
-  /\bsee\s+(my\s+)?(progress|goals|stats|statistics|performance|overview)/i,
-  /\bview\s+(my\s+)?(progress|goals|stats|statistics|performance|overview)/i,
-  /\bvisuali[sz]e\s+(my\s+)?(progress|goals|performance|stats)/i,
-  /\bgraph\s+(of|for|showing)\s+(my\s+)?(progress|goals|performance)/i,
-  /\bchart\s+(of|for|showing)\s+(my\s+)?(progress|goals|performance)/i,
+  /\bsee\s+(my\s+)?(progress|goals|stats|statistics|performance|overview)\b/i,
+  /\bview\s+(my\s+)?(progress|goals|stats|statistics|performance|overview)\b/i,
+  /\bvisuali[sz]e\s+(my\s+)?(progress|goals|performance|stats)\b/i,
+  /\bgraph\s+(of|for|showing)\s+(my\s+)?(progress|goals|performance)\b/i,
+  /\bchart\s+(of|for|showing)\s+(my\s+)?(progress|goals|performance)\b/i,
+  /\b(add|create|set up|setup|start)\s+(a|my|the)?\s*(new\s+)?(goal|milestone)s?\b/i,
+  /\blet'?s\s+(add|create|set up|setup|start)\s+(a\s+)?(goal|milestone)s?\b/i,
 ];
 
 const GOAL_UPDATE_PATTERNS = [
