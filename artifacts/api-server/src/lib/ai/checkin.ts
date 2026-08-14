@@ -30,6 +30,26 @@ interface ExtractedGoalUpdate {
   note: string;
 }
 
+function sanitizeGoalUpdates(updates: unknown, goalMap: Map<string, UserContext["goals"][number]>): ExtractedGoalUpdate[] {
+  if (!Array.isArray(updates)) return [];
+
+  return updates
+    .slice(0, 5)
+    .filter((item): item is Partial<ExtractedGoalUpdate> => !!item && typeof item === "object")
+    .map((item) => {
+      const goalId = typeof item.goalId === "string" ? item.goalId : "";
+      const goal = goalMap.get(goalId);
+      const rawProgress = Number(item.percentProgress);
+      const percentProgress = Number.isFinite(rawProgress)
+        ? Math.max(0, Math.min(100, Math.round(rawProgress)))
+        : -1;
+      const goalTitle = goal?.title ?? "";
+      const note = typeof item.note === "string" ? item.note.trim().slice(0, 1000) : "";
+      return { goalId, goalTitle, percentProgress, note };
+    })
+    .filter((item) => item.goalId && goalMap.has(item.goalId) && item.percentProgress >= 0);
+}
+
 async function extractAndSaveGoalProgress(
   ctx: UserContext,
   userMessage: string,
@@ -75,49 +95,35 @@ Rules:
     maxOutputTokens: 1024,
   });
 
-  // Strip markdown code fences the model sometimes adds despite instructions
   const raw = rawText
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```\s*$/, "")
     .trim();
 
-  let updates: ExtractedGoalUpdate[] = [];
+  let parsedUpdates: unknown = [];
   try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) updates = parsed;
-    else if (parsed && typeof parsed === "object") updates = [parsed];
+    parsedUpdates = JSON.parse(raw);
   } catch (err) {
     console.warn("[goal-extract] JSON parse failed. Raw response:", rawText, "Error:", err);
-    updates = [];
   }
 
-  console.info("[goal-extract] Extracted updates:", JSON.stringify(updates));
-
-  const today = getDateInTimezone(ctx.user.timezone);
-
   const goalMap = new Map(ctx.goals.map((g) => [g.id, g]));
-  const validUpdates = updates.filter((u) => {
-    if (!goalMap.has(u.goalId)) {
-      console.warn("[goal-extract] AI returned unknown goalId:", u.goalId, "— skipping");
-      return false;
-    }
-    return true;
-  });
+  const validUpdates = sanitizeGoalUpdates(parsedUpdates, goalMap);
 
   for (const update of validUpdates) {
     const goalMeta = goalMap.get(update.goalId);
     const isDaily = goalMeta?.cadence === "daily";
+    const shouldStampReset = isDaily && goalMeta?.lastProgressResetDate !== getDateInTimezone(ctx.user.timezone);
 
-    const shouldStampReset = isDaily && goalMeta?.lastProgressResetDate !== today;
-
-    console.info("[goal-extract] Writing progress:", update.goalId, update.percentProgress + "%");
+    // Enforce the model's declared 0-100 range at the database boundary too.
+    // The goal ID is also validated against this user's active goals before writing.
     await db
       .update(goalsTable)
       .set({
         progress: update.percentProgress,
         lastCheckedAt: new Date(),
-        ...(shouldStampReset ? { lastProgressResetDate: today } : {}),
+        ...(shouldStampReset ? { lastProgressResetDate: getDateInTimezone(ctx.user.timezone) } : {}),
       })
       .where(and(eq(goalsTable.id, update.goalId), eq(goalsTable.userId, ctx.user.id)));
 
@@ -125,48 +131,54 @@ Rules:
       try {
         await updateStreakForGoal(update.goalId, ctx.user.id, update.goalTitle, update.percentProgress, ctx.user.timezone);
       } catch (err) {
-        console.warn("[goal-extract] Streak update failed for goal", update.goalId, err);
+        logger.warn({ err, goalId: update.goalId }, "Streak update failed for goal");
       }
     }
   }
 
-  updates = validUpdates;
-
-  if (updates.length > 0) {
+  if (validUpdates.length > 0) {
+    const today = getDateInTimezone(ctx.user.timezone);
     const [existingLog] = await db
       .select()
       .from(dailyLogsTable)
       .where(and(eq(dailyLogsTable.userId, ctx.user.id), eq(dailyLogsTable.logDate, today)));
 
-    const logEntry = {
-      goalUpdates: updates,
-      midDayMessage: userMessage,
-      midDayTimestamp: new Date().toISOString(),
-    };
-
     if (existingLog) {
       const existing = (existingLog.data as Record<string, unknown> | null) ?? {};
+      const previousUpdates = Array.isArray(existing.goalUpdates) ? existing.goalUpdates : [];
+      const mergedUpdates = [...previousUpdates, ...validUpdates].slice(-20);
       await db
         .update(dailyLogsTable)
-        .set({ data: { ...existing, ...logEntry } })
+        .set({
+          data: {
+            ...existing,
+            goalUpdates: mergedUpdates,
+            midDayMessage: userMessage,
+            midDayTimestamp: new Date().toISOString(),
+          },
+        })
         .where(eq(dailyLogsTable.id, existingLog.id));
     } else {
       await db.insert(dailyLogsTable).values({
         id: nanoid(),
         userId: ctx.user.id,
         logDate: today,
-        data: logEntry,
+        data: {
+          goalUpdates: validUpdates,
+          midDayMessage: userMessage,
+          midDayTimestamp: new Date().toISOString(),
+        },
         narrative: null,
       });
     }
   }
 
   logger.info(
-    { userId: ctx.user.id, savedCount: updates.length, goalIds: updates.map((u) => u.goalId) },
+    { userId: ctx.user.id, savedCount: validUpdates.length, goalIds: validUpdates.map((u) => u.goalId) },
     "Goal progress extraction complete",
   );
 
-  return { updates, inputTokens, outputTokens };
+  return { updates: validUpdates, inputTokens, outputTokens };
 }
 
 export async function runCheckIn(
@@ -278,5 +290,4 @@ export async function runCheckIn(
   };
 }
 
-// Re-export for compatibility with files that import getTodayDate from here
 export { getTodayDate };
