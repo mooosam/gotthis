@@ -1,6 +1,9 @@
 // Idempotent seed for the default subscription plans. Runs once at server boot;
 // inserts the three baseline tiers if they don't already exist so the admin
 // dashboard always has data to manage out of the box.
+//
+// IMPORTANT: this seed only creates missing plans. It must never overwrite an
+// administrator's plan settings on restart/deploy.
 
 import { db, plansTable } from "@workspace/db";
 import { logger } from "./logger.js";
@@ -43,21 +46,12 @@ const DEFAULT_PLANS = [
 
 export async function seedDefaultPlans(): Promise<void> {
   try {
-    await db
-      .insert(plansTable)
-      .values(DEFAULT_PLANS)
-      .onDuplicateKeyUpdate({
-        set: {
-          name: plansTable.name,
-          description: plansTable.description,
-          dailyMessageCap: plansTable.dailyMessageCap,
-          monthlyTokenAllowance: plansTable.monthlyTokenAllowance,
-          monthlySkipCredits: plansTable.monthlySkipCredits,
-          priceCents: plansTable.priceCents,
-          sortOrder: plansTable.sortOrder,
-        },
-      });
-    logger.info("Default plans seeded/updated");
+    // INSERT IGNORE semantics for MySQL: existing plans, including admin edits,
+    // remain untouched while missing baseline tiers are created.
+    await db.insert(plansTable).values(DEFAULT_PLANS).onDuplicateKeyUpdate({
+      set: { slug: plansTable.slug },
+    });
+    logger.info("Default plans seeded; existing plan settings preserved");
   } catch (err) {
     logger.warn({ err }, "Default plan seed failed");
   }
