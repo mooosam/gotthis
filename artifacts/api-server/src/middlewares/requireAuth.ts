@@ -1,6 +1,6 @@
 import { getAuth, clerkClient } from "@clerk/express";
 import type { Request, Response, NextFunction } from "express";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, plansTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getTierConfig } from "../lib/tierConfig.js";
@@ -43,9 +43,15 @@ export async function requireAuth(
     const shouldBeAdmin =
       ADMIN_BOOTSTRAP_EMAIL.length > 0 &&
       email.toLowerCase() === ADMIN_BOOTSTRAP_EMAIL;
+
+    // New accounts inherit the current database plan, so administrator changes
+    // to the Free plan are reflected for users created after the change.
+    const [freePlan] = await db
+      .select()
+      .from(plansTable)
+      .where(eq(plansTable.slug, "free"));
     const freeConfig = getTierConfig("free");
 
-    // MySQL: use .ignore() instead of onConflictDoNothing(); no .returning() support
     await db
       .insert(usersTable)
       .ignore()
@@ -53,8 +59,9 @@ export async function requireAuth(
         id: clerkId,
         email,
         tier: "free",
-        dailyMessageCap: freeConfig.dailyMessageCap,
-        monthlyTokenAllowance: freeConfig.monthlyTokenAllowance,
+        dailyMessageCap: freePlan?.dailyMessageCap ?? freeConfig.dailyMessageCap,
+        monthlyTokenAllowance: freePlan?.monthlyTokenAllowance ?? freeConfig.monthlyTokenAllowance,
+        monthlySkipCredits: freePlan?.monthlySkipCredits ?? freeConfig.monthlySkipCredits,
         isAdmin: shouldBeAdmin,
       });
 
