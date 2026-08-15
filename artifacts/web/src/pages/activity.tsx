@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { format, isToday, isYesterday } from "date-fns";
 import { ArrowUpRight, CheckCircle2, MessageCircle, Target, Activity as ActivityIcon } from "lucide-react";
@@ -7,6 +7,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 
 const BAR_WIDTH = 18;
+
+type ActivityType = "check_in" | "goal_update" | "milestone_completed";
+type Filter = "all" | "goals" | "checkins";
 
 function progressBar(progress: number) {
   const clamped = Math.max(0, Math.min(100, progress));
@@ -23,7 +26,7 @@ function dateLabel(value: string) {
 
 type Activity = {
   id: string;
-  type: "check_in" | "goal_update" | "milestone_completed";
+  type: ActivityType;
   title: string;
   description: string;
   goalId?: string | null;
@@ -60,8 +63,8 @@ function ActivityRow({ item }: { item: Activity }) {
         </div>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#4B5563]">{item.description}</p>
         {typeof item.progress === "number" ? (
-          <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-[#6B7280]">
-            <span>{progressBar(item.progress)}</span>
+          <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-[10px] text-[#6B7280]">
+            <span aria-label={`${item.progress}% progress`}>{progressBar(item.progress)}</span>
             <span className="font-sans font-semibold">{item.progress}%</span>
           </div>
         ) : null}
@@ -73,6 +76,7 @@ function ActivityRow({ item }: { item: Activity }) {
 export default function ActivityPage() {
   const [items, setItems] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState<Filter>("all");
 
   useEffect(() => {
     let active = true;
@@ -93,11 +97,21 @@ export default function ActivityPage() {
     return () => { active = false; };
   }, []);
 
-  const grouped = items.reduce<Record<string, Activity[]>>((groups, item) => {
+  const filteredItems = useMemo(() => {
+    if (filter === "goals") return items.filter((item) => item.type !== "check_in");
+    if (filter === "checkins") return items.filter((item) => item.type === "check_in");
+    return items;
+  }, [filter, items]);
+
+  const grouped = filteredItems.reduce<Record<string, Activity[]>>((groups, item) => {
     const label = dateLabel(item.createdAt);
     (groups[label] ??= []).push(item);
     return groups;
   }, {});
+
+  const todayCount = items.filter((item) => isToday(new Date(item.createdAt))).length;
+  const goalUpdateCount = items.filter((item) => item.type !== "check_in").length;
+  const checkInCount = items.filter((item) => item.type === "check_in").length;
 
   return (
     <AppLayout>
@@ -108,8 +122,44 @@ export default function ActivityPage() {
           </div>
           <h1 className="mt-2 font-serif text-[30px] font-semibold tracking-tight text-[#111827]">Your progress, in context.</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6B7280]">
-            A simple history of your check-ins, goal updates, and completed milestones. Every item here comes from your saved GotThis activity.
+            A chronological history of your saved check-ins and goal updates. Progress comes from persisted GotThis data, not AI-generated history.
           </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-[#EBEBEB] bg-white p-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9CA3AF]">Today</div>
+            <div className="mt-1 font-serif text-2xl font-bold text-[#111827]">{todayCount}</div>
+          </div>
+          <div className="rounded-xl border border-[#EBEBEB] bg-white p-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9CA3AF]">Goal updates</div>
+            <div className="mt-1 font-serif text-2xl font-bold text-[#111827]">{goalUpdateCount}</div>
+          </div>
+          <div className="rounded-xl border border-[#EBEBEB] bg-white p-4">
+            <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9CA3AF]">Check-ins</div>
+            <div className="mt-1 font-serif text-2xl font-bold text-[#111827]">{checkInCount}</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {([
+            ["all", "All"],
+            ["goals", "Goals"],
+            ["checkins", "Check-ins"],
+          ] as Array<[Filter, string]>).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setFilter(value)}
+              className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{
+                borderColor: filter === value ? "#111827" : "#E5E7EB",
+                background: filter === value ? "#111827" : "#FFFFFF",
+                color: filter === value ? "#FFFFFF" : "#6B7280",
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="rounded-2xl border border-[#EBEBEB] bg-white px-5 sm:px-7">
@@ -120,14 +170,14 @@ export default function ActivityPage() {
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
             </div>
-          ) : items.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
             <div className="py-14 text-center">
               <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-[#F3F4F6]">
                 <Target className="h-5 w-5 text-[#6B7280]" />
               </div>
-              <h2 className="mt-4 text-sm font-semibold text-[#111827]">No activity yet</h2>
+              <h2 className="mt-4 text-sm font-semibold text-[#111827]">No activity here yet</h2>
               <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-[#6B7280]">
-                Send a check-in through the dashboard or WhatsApp and your progress will appear here.
+                Send a check-in through the dashboard or WhatsApp and your saved progress will appear here.
               </p>
             </div>
           ) : (
