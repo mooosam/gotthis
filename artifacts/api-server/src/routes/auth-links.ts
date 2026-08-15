@@ -36,7 +36,7 @@ router.post("/auth-links/:code/redeem", async (req, res): Promise<void> => {
         FOR UPDATE`,
       [code],
     );
-    const link = (rows as LockedAuthLink[])[0];
+    const link = (rows as unknown as LockedAuthLink[])[0];
 
     if (!link) {
       await connection.rollback();
