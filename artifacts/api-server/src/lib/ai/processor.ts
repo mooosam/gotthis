@@ -7,7 +7,7 @@ import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
 import { createGoalFromMessage } from "./goal-create.js";
 import { checkPerMinuteThrottle } from "./throttle.js";
-import { getBaseUrl } from "../whatsapp/magic-link.js";
+import { createAuthenticatedShortLink } from "../whatsapp/auth-link.js";
 
 export interface ProcessMessageResult {
   reply: string;
@@ -23,10 +23,10 @@ function renderProgressBar(progress: number, width = 16): string {
   return `${"█".repeat(filled)}${"░".repeat(width - filled)}`;
 }
 
-function renderDashboardReply(ctx: Awaited<ReturnType<typeof assembleContext>>): string {
-  const base = getBaseUrl();
+async function renderDashboardReply(ctx: Awaited<ReturnType<typeof assembleContext>>): Promise<string> {
+  const dashboardUrl = await createAuthenticatedShortLink(ctx.user.id, "/dashboard");
   const goals = ctx.goals.slice(0, 5);
-  if (goals.length === 0) return `You don't have any active goals yet. Add one here:\n\n${base}/dashboard`;
+  if (goals.length === 0) return `You don't have any active goals yet. Add one here:\n\n${dashboardUrl}`;
 
   const lines = ["📊 YOUR PROGRESS", ""];
   for (const goal of goals) {
@@ -36,7 +36,7 @@ function renderDashboardReply(ctx: Awaited<ReturnType<typeof assembleContext>>):
     lines.push(`${renderProgressBar(pct)} ${pct}%`);
   }
   if (ctx.goals.length > 5) lines.push(`\n+ ${ctx.goals.length - 5} more active goals`);
-  lines.push(`\nOpen dashboard: ${base}/dashboard`);
+  lines.push(`\nOpen dashboard: ${dashboardUrl}`);
   return lines.join("\n");
 }
 
@@ -75,7 +75,11 @@ export async function processMessage(userId: string, message: string): Promise<P
   let reply: string;
 
   if (intent === "dashboard") {
-    reply = renderDashboardReply(ctx);
+    try {
+      reply = await renderDashboardReply(ctx);
+    } catch {
+      reply = "I couldn't create a secure dashboard link just now. Please try again in a moment.";
+    }
   } else if (intent === "goal_create") {
     const result = await createGoalFromMessage(ctx, safeMessage);
     reply = result.response;
