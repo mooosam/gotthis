@@ -24,6 +24,7 @@ import GoalDetailPage from "@/pages/goal-detail";
 import ReviewPage from "@/pages/review";
 import AccountPage from "@/pages/account";
 import SharePage from "@/pages/share";
+import WhatsAppAuthPage from "@/pages/whatsapp-auth";
 import AdminOverviewPage from "@/pages/admin";
 import AdminUsersPage from "@/pages/admin/users";
 import AdminUserDetailPage from "@/pages/admin/user-detail";
@@ -43,6 +44,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) { const { isSig
 function ClerkProviderWithRoutes() { const [, setLocation] = useLocation(); return <ClerkProvider publishableKey={clerkPubKey} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><QueryClientProvider client={queryClient}><ClerkAuthSetup /><ClerkQueryClientCacheInvalidator /><Switch>
   <Route path="/" component={HomePage} /><Route path="/pricing" component={PricingPage} /><Route path="/faq" component={FaqPage} /><Route path="/contact" component={ContactPage} /><Route path="/terms" component={TermsPage} /><Route path="/cookies" component={CookiesPage} /><Route path="/data-policy" component={DataPolicyPage} />
   <Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} />
+  <Route path="/go/:code">{(params) => <WhatsAppAuthPage code={params.code} />}</Route>
   <Route path="/onboarding"><Show when="signed-in"><OnboardingPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
   <Route path="/dashboard"><Show when="signed-in"><DashboardPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
   <Route path="/activity"><Show when="signed-in"><ActivityPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
