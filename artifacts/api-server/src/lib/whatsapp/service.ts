@@ -28,75 +28,40 @@ function cacheHas(id: string): boolean {
   }
   return true;
 }
-function cacheSet(id: string): void {
-  msgCache.set(id, Date.now());
-}
+function cacheSet(id: string): void { msgCache.set(id, Date.now()); }
 
 setInterval(() => {
   const cutoff = Date.now() - CACHE_TTL_MS;
-  for (const [id, at] of msgCache) {
-    if (at < cutoff) msgCache.delete(id);
-  }
+  for (const [id, at] of msgCache) if (at < cutoff) msgCache.delete(id);
 }, SWEEP_MS).unref();
 
 export function getStatus(): WAStatus {
-  const configured = !!(
-    process.env.WHATSAPP_PHONE_NUMBER_ID &&
-    process.env.WHATSAPP_ACCESS_TOKEN &&
-    process.env.WHATSAPP_VERIFY_TOKEN
-  );
+  const configured = !!(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_VERIFY_TOKEN);
   return configured ? "open" : "disconnected";
 }
 
-export function getConnectedPhone(): string | null {
-  return process.env.WHATSAPP_DISPLAY_PHONE ?? null;
-}
+export function getConnectedPhone(): string | null { return process.env.WHATSAPP_DISPLAY_PHONE ?? null; }
 
-export function verifyWebhookChallenge(
-  mode: string | undefined,
-  token: string | undefined,
-  challenge: string | undefined,
-): string | null {
+export function verifyWebhookChallenge(mode: string | undefined, token: string | undefined, challenge: string | undefined): string | null {
   const expected = process.env.WHATSAPP_VERIFY_TOKEN;
-  if (mode === "subscribe" && expected && token === expected) {
-    return challenge ?? "";
-  }
+  if (mode === "subscribe" && expected && token === expected) return challenge ?? "";
   return null;
 }
 
-export function verifyCloudApiSignature(
-  rawBody: Buffer,
-  signatureHeader: string | undefined,
-): boolean {
+export function verifyCloudApiSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
   const appSecret = process.env.WHATSAPP_APP_SECRET;
   if (!appSecret || !signatureHeader) return false;
-  const expected =
-    "sha256=" +
-    crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(expected),
-      Buffer.from(signatureHeader),
-    );
-  } catch {
-    return false;
-  }
+  const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
+  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader)); }
+  catch { return false; }
 }
 
 async function findUserByPhone(phone: string): Promise<User | null> {
   const hashed = hashPhone(phone);
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.phoneHash, hashed));
-
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phoneHash, hashed));
   if (user && user.whatsappJid !== phone) {
-    await db
-      .update(usersTable)
-      .set({ whatsappJid: phone })
-      .where(eq(usersTable.id, user.id));
+    await db.update(usersTable).set({ whatsappJid: phone }).where(eq(usersTable.id, user.id));
   }
-
   return user ?? null;
 }
 
@@ -107,44 +72,22 @@ async function sendCloudApiMessage(to: string, text: string): Promise<void> {
     logger.error("WhatsApp Cloud API not configured — cannot send message");
     return;
   }
-
-  const res = await fetch(
-    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: text },
-      }),
-    },
-  );
-
+  const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: text } }),
+  });
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
-    logger.error(
-      { status: res.status, errBody },
-      "Failed to send WhatsApp message via Cloud API",
-    );
+    logger.error({ status: res.status, errBody }, "Failed to send WhatsApp message via Cloud API");
   }
 }
 
-async function sendTracked(to: string, text: string): Promise<void> {
-  await sendCloudApiMessage(to, text);
-}
-
-export async function sendToJid(to: string, text: string): Promise<void> {
-  await sendTracked(to, text);
-}
+async function sendTracked(to: string, text: string): Promise<void> { await sendCloudApiMessage(to, text); }
+export async function sendToJid(to: string, text: string): Promise<void> { await sendTracked(to, text); }
 
 async function handleIncomingMessage(phone: string, text: string): Promise<void> {
   const user = await findUserByPhone(phone);
-
   if (!user) return;
 
   const command = text.trim().toLowerCase();
@@ -162,8 +105,7 @@ async function handleIncomingMessage(phone: string, text: string): Promise<void>
   if (!user.onboardingCompleted) {
     try {
       const onboardingUrl = await createAuthenticatedShortLink(user.id, "/onboarding");
-      const reply = `Your account is almost ready. Finish setting up your timezone and goals here: ${onboardingUrl}\n\nThen message me again to start your first ritual.`;
-      await sendTracked(phone, reply);
+      await sendTracked(phone, `Your account is almost ready. Finish setting up your timezone and goals here: ${onboardingUrl}\n\nThen message me again to start your first ritual.`);
     } catch (linkErr) {
       logger.error({ err: linkErr, userId: user.id }, "Failed to generate onboarding auth link");
       await sendTracked(phone, "Your account is almost ready, but I couldn't create a secure setup link just now. Please try again in a moment.");
@@ -174,50 +116,28 @@ async function handleIncomingMessage(phone: string, text: string): Promise<void>
   const budgetCheck = checkBudgetForUser(user);
   if (!budgetCheck.allowed) {
     const base = getBaseUrl();
-    const upgradeHint = budgetCheck.upgradePrompt
-      ? `\n\n👉 Upgrade now: ${base}/pricing`
-      : "";
-    const reply = (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint;
-    await sendTracked(phone, reply);
+    const upgradeHint = budgetCheck.upgradePrompt ? `\n\n👉 Upgrade now: ${base}/pricing` : "";
+    await sendTracked(phone, (budgetCheck.reason ?? "Daily message limit reached.") + upgradeHint);
     return;
   }
 
-  try {
-    await recordInboundEngagement(user.id);
-  } catch (engagementErr) {
-    logger.warn({ err: engagementErr }, "Failed to record engagement sample");
-  }
+  try { await recordInboundEngagement(user.id); }
+  catch (engagementErr) { logger.warn({ err: engagementErr }, "Failed to record engagement sample"); }
 
-  const result = await processMessage(user.id, text);
-
-  logger.info(
-    { phone: phone.slice(-4) + "****", intent: result.intent, voice: false },
-    "WhatsApp message processed",
-  );
+  const result = await processMessage(user.id, text, "whatsapp");
+  logger.info({ phone: phone.slice(-4) + "****", intent: result.intent, voice: false }, "WhatsApp message processed");
 
   const today = new Date().toISOString().split("T")[0];
   let reply = result.reply;
-
-  if (
-    result.intent === "morning_ritual" ||
-    result.intent === "evening_ritual" ||
-    result.intent === "goal_update"
-  ) {
+  if (result.intent === "morning_ritual" || result.intent === "evening_ritual" || result.intent === "goal_update") {
     try {
       const reviewUrl = await createAuthenticatedShortLink(user.id, `/review/${today}`);
-      const linkLabel =
-        result.intent === "goal_update"
-          ? "See your updated goal progress"
-          : "View your full review";
+      const linkLabel = result.intent === "goal_update" ? "See your updated goal progress" : "View your full review";
       reply = `${reply}\n\n${linkLabel}: ${reviewUrl}`;
     } catch (linkErr) {
-      logger.warn(
-        { err: linkErr },
-        "Failed to generate authenticated review link for WhatsApp response",
-      );
+      logger.warn({ err: linkErr }, "Failed to generate authenticated review link for WhatsApp response");
     }
   }
-
   await sendTracked(phone, reply);
 }
 
@@ -229,16 +149,10 @@ interface CloudApiMessage {
   audio?: { id: string; mime_type?: string };
 }
 interface CloudApiWebhookBody {
-  entry?: Array<{
-    changes?: Array<{
-      value?: { messages?: CloudApiMessage[] };
-    }>;
-  }>;
+  entry?: Array<{ changes?: Array<{ value?: { messages?: CloudApiMessage[] } }> }>;
 }
 
-export async function processWebhookPayload(
-  body: CloudApiWebhookBody,
-): Promise<void> {
+export async function processWebhookPayload(body: CloudApiWebhookBody): Promise<void> {
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const messages = change.value?.messages ?? [];
@@ -249,19 +163,14 @@ export async function processWebhookPayload(
 
         const phone = msg.from;
         let text = "";
-
         try {
           if (msg.type === "audio" && msg.audio?.id) {
-            logger.info(
-              { phone: phone.slice(-4) + "****", mediaId: msg.audio.id },
-              "Incoming WhatsApp voice message",
-            );
+            logger.info({ phone: phone.slice(-4) + "****", mediaId: msg.audio.id }, "Incoming WhatsApp voice message");
             const media = await downloadWhatsAppMedia(msg.audio.id);
             if (media.data.length > MAX_VOICE_AUDIO_BYTES) {
               await sendTracked(phone, "That voice note is too large. Please send a shorter voice note and try again.");
               continue;
             }
-
             text = await transcribeWithElevenLabs(media.data, media.mimeType);
             const voicePolicy = validateVoiceTranscription(text);
             if (!voicePolicy.allowed) {
@@ -269,11 +178,7 @@ export async function processWebhookPayload(
               continue;
             }
             text = voicePolicy.normalizedMessage;
-
-            logger.info(
-              { phone: phone.slice(-4) + "****", transcriptionChars: text.length },
-              "WhatsApp voice message transcribed",
-            );
+            logger.info({ phone: phone.slice(-4) + "****", transcriptionChars: text.length }, "WhatsApp voice message transcribed");
           } else {
             text = msg.text?.body ?? "";
           }
