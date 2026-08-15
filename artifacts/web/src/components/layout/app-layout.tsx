@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
+import { RecentActivityPreview } from "@/components/dashboard/recent-activity-preview";
 
 const CATEGORY_COLORS: Record<string, string> = { fitness:"#22C55E", health:"#22C55E", wellness:"#22C55E", writing:"#3B82F6", work:"#3B82F6", career:"#3B82F6", productivity:"#3B82F6", reading:"#EAB308", learning:"#EAB308", education:"#EAB308", finance:"#F97316", money:"#F97316", mindfulness:"#A855F7", meditation:"#A855F7", social:"#EC4899" };
 function getCategoryColor(category: string): string { return CATEGORY_COLORS[category.toLowerCase()] ?? "#94A3B8"; }
@@ -20,7 +21,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isAdminPage = location.startsWith("/admin");
   useEffect(() => { if (!isLoading && profile && !profile.onboardingCompleted && !isAdminPage) setLocation("/onboarding"); }, [profile, isLoading, setLocation, isAdminPage]);
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><div className="flex flex-col items-center gap-4"><Skeleton className="h-12 w-12 rounded-full" /><Skeleton className="h-4 w-32" /></div></div>;
-  return <div className="min-h-screen flex flex-col md:flex-row bg-[#FAFAFA] dark:bg-background"><Sidebar className="hidden md:flex w-52 flex-col border-r border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar" isAdmin={profile?.isAdmin === true} whatsappConnected={!!profile?.phoneHash} /><div className="flex-1 flex flex-col min-w-0"><MobileNav isAdmin={profile?.isAdmin === true} /><main className="flex-1 overflow-auto p-6 md:p-10"><div className="max-w-5xl mx-auto">{children}</div></main></div></div>;
+  return <div className="min-h-screen flex flex-col md:flex-row bg-[#FAFAFA] dark:bg-background"><Sidebar className="hidden md:flex w-52 flex-col border-r border-[#EBEBEB] dark:border-border bg-white dark:bg-sidebar" isAdmin={profile?.isAdmin === true} whatsappConnected={!!profile?.phoneHash} /><div className="flex-1 flex flex-col min-w-0"><MobileNav isAdmin={profile?.isAdmin === true} /><main className="flex-1 overflow-auto p-6 md:p-10"><div className="max-w-5xl mx-auto">{children}{location === "/dashboard" ? <div className="mt-6"><RecentActivityPreview /></div> : null}</div></main></div></div>;
 }
 
 function SidebarLogoutButton() { const { signOut } = useClerk(); return <button onClick={() => signOut()} data-testid="sidebar-logout" className="flex items-center gap-2.5 px-2.5 py-[6px] rounded-lg w-full cursor-pointer transition-colors hover:bg-red-50 dark:hover:bg-red-950/30 group" style={{fontSize:14,color:"#9CA3AF"}}><LogOut className="h-[14px] w-[14px] flex-shrink-0 group-hover:text-red-500 transition-colors" /><span className="group-hover:text-red-500 transition-colors">Log out</span></button>; }
