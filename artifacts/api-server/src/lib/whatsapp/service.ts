@@ -3,7 +3,8 @@ import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { hashPhone } from "../phone.js";
 import { processMessage } from "../ai/processor.js";
-import { createReviewMagicLink, getBaseUrl } from "./magic-link.js";
+import { getBaseUrl } from "./magic-link.js";
+import { createAuthenticatedShortLink } from "./auth-link.js";
 import { checkBudgetForUser } from "../ai/usage.js";
 import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
@@ -148,16 +149,25 @@ async function handleIncomingMessage(phone: string, text: string): Promise<void>
 
   const command = text.trim().toLowerCase();
   if (command === "dashboard" || command === "dash") {
-    const base = getBaseUrl();
-    const reply = `Here’s your GotThis dashboard:\n\n${base}/dashboard`;
-    await sendTracked(phone, reply);
+    try {
+      const dashboardUrl = await createAuthenticatedShortLink(user.id, "/dashboard");
+      await sendTracked(phone, `Here’s your GotThis dashboard:\n\n${dashboardUrl}`);
+    } catch (linkErr) {
+      logger.error({ err: linkErr, userId: user.id }, "Failed to generate dashboard auth link");
+      await sendTracked(phone, "I couldn't create a secure dashboard link just now. Please try again in a moment.");
+    }
     return;
   }
 
   if (!user.onboardingCompleted) {
-    const base = getBaseUrl();
-    const reply = `Your account is almost ready. Please finish setting up your timezone and goals at ${base}/onboarding — then message me again to start your first ritual.`;
-    await sendTracked(phone, reply);
+    try {
+      const onboardingUrl = await createAuthenticatedShortLink(user.id, "/onboarding");
+      const reply = `Your account is almost ready. Finish setting up your timezone and goals here: ${onboardingUrl}\n\nThen message me again to start your first ritual.`;
+      await sendTracked(phone, reply);
+    } catch (linkErr) {
+      logger.error({ err: linkErr, userId: user.id }, "Failed to generate onboarding auth link");
+      await sendTracked(phone, "Your account is almost ready, but I couldn't create a secure setup link just now. Please try again in a moment.");
+    }
     return;
   }
 
@@ -194,7 +204,7 @@ async function handleIncomingMessage(phone: string, text: string): Promise<void>
     result.intent === "goal_update"
   ) {
     try {
-      const reviewUrl = await createReviewMagicLink(user.id, today);
+      const reviewUrl = await createAuthenticatedShortLink(user.id, `/review/${today}`);
       const linkLabel =
         result.intent === "goal_update"
           ? "See your updated goal progress"
@@ -203,7 +213,7 @@ async function handleIncomingMessage(phone: string, text: string): Promise<void>
     } catch (linkErr) {
       logger.warn(
         { err: linkErr },
-        "Failed to generate magic link for WhatsApp response",
+        "Failed to generate authenticated review link for WhatsApp response",
       );
     }
   }
