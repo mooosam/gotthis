@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { db, goalsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { requireGoalSlot } from "../middlewares/requireTier";
+import { recordActivityEvent } from "../lib/activity-events.js";
 import { nanoid } from "nanoid";
 import {
   CreateGoalBody,
@@ -20,17 +21,13 @@ async function validateParent(
   parentGoalId: string,
   selfId: string | null,
 ): Promise<string | null> {
-  if (selfId !== null && parentGoalId === selfId) {
-    return "A goal cannot be its own parent";
-  }
+  if (selfId !== null && parentGoalId === selfId) return "A goal cannot be its own parent";
   const seen = new Set<string>();
   let cursor: string | null = parentGoalId;
   while (cursor) {
     if (seen.has(cursor)) return "Cycle detected in parent chain";
     seen.add(cursor);
-    if (selfId !== null && cursor === selfId) {
-      return "Setting this parent would create a cycle";
-    }
+    if (selfId !== null && cursor === selfId) return "Setting this parent would create a cycle";
     const [parent] = await db
       .select({ id: goalsTable.id, parentGoalId: goalsTable.parentGoalId })
       .from(goalsTable)
@@ -43,155 +40,85 @@ async function validateParent(
 
 router.get("/goals", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-
   const parsed = ListGoalsQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { status } = parsed.data;
   const conditions = [eq(goalsTable.userId, userId)];
   if (status) conditions.push(eq(goalsTable.status, status));
-
-  const goals = await db
-    .select()
-    .from(goalsTable)
-    .where(and(...conditions))
-    .orderBy(goalsTable.createdAt);
-
+  const goals = await db.select().from(goalsTable).where(and(...conditions)).orderBy(goalsTable.createdAt);
   res.json(goals);
 });
 
 router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-
   const parsed = CreateGoalBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const {
-    title,
-    description,
-    category,
-    deadline,
-    successCriteria,
-    cadence,
-    goalType,
-    targetValue,
-    targetUnit,
-    parentGoalId,
-  } = parsed.data;
-
+  const { title, description, category, deadline, successCriteria, cadence, goalType, targetValue, targetUnit, parentGoalId } = parsed.data;
   const resolvedType = goalType ?? "habit";
-  const resolvedCadence =
-    resolvedType === "target" || resolvedType === "average" || resolvedType === "milestone"
-      ? "ongoing"
-      : (cadence ?? "daily");
+  const resolvedCadence = resolvedType === "target" || resolvedType === "average" || resolvedType === "milestone" ? "ongoing" : (cadence ?? "daily");
 
   if (parentGoalId) {
     const err = await validateParent(userId, parentGoalId, null);
-    if (err) {
-      res.status(400).json({ error: err });
-      return;
-    }
+    if (err) { res.status(400).json({ error: err }); return; }
   }
 
-  // MySQL: no .returning() — insert then re-select by id
   const goalId = nanoid();
-  await db
-    .insert(goalsTable)
-    .values({
-      id: goalId,
-      userId,
-      parentGoalId: parentGoalId ?? null,
-      title,
-      description: description ?? null,
-      category: category ?? "general",
-      deadline: deadline ?? null,
-      successCriteria: successCriteria ?? null,
-      cadence: resolvedCadence,
-      goalType: resolvedType,
-      targetValue: targetValue ?? null,
-      targetUnit: targetUnit ?? null,
-      shareToken: nanoid(16),
-    });
+  await db.insert(goalsTable).values({
+    id: goalId,
+    userId,
+    parentGoalId: parentGoalId ?? null,
+    title,
+    description: description ?? null,
+    category: category ?? "general",
+    deadline: deadline ?? null,
+    successCriteria: successCriteria ?? null,
+    cadence: resolvedCadence,
+    goalType: resolvedType,
+    targetValue: targetValue ?? null,
+    targetUnit: targetUnit ?? null,
+    shareToken: nanoid(16),
+  });
 
   const [goal] = await db.select().from(goalsTable).where(eq(goalsTable.id, goalId));
+  await recordActivityEvent({
+    userId,
+    eventType: "goal_created",
+    source: "dashboard",
+    goalId,
+    title: "Goal created",
+    description: title,
+    progress: 0,
+    currentValue: 0,
+    targetValue: targetValue ?? null,
+    targetUnit: targetUnit ?? null,
+  });
   res.status(201).json(goal);
 });
 
 router.get("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-
   const parsed = GetGoalParams.safeParse(req.params);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-
-  const [goal] = await db
-    .select()
-    .from(goalsTable)
-    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
-
-  if (!goal) {
-    res.status(404).json({ error: "Goal not found" });
-    return;
-  }
-
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const [goal] = await db.select().from(goalsTable).where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
+  if (!goal) { res.status(404).json({ error: "Goal not found" }); return; }
   res.json(goal);
 });
 
 router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-
   const paramsParsed = UpdateGoalParams.safeParse(req.params);
-  if (!paramsParsed.success) {
-    res.status(400).json({ error: paramsParsed.error.message });
-    return;
-  }
-
+  if (!paramsParsed.success) { res.status(400).json({ error: paramsParsed.error.message }); return; }
   const bodyParsed = UpdateGoalBody.safeParse(req.body);
-  if (!bodyParsed.success) {
-    res.status(400).json({ error: bodyParsed.error.message });
-    return;
-  }
+  if (!bodyParsed.success) { res.status(400).json({ error: bodyParsed.error.message }); return; }
 
-  const {
-    title,
-    description,
-    category,
-    deadline,
-    status,
-    progress,
-    successCriteria,
-    cadence,
-    goalType,
-    targetValue,
-    targetUnit,
-    currentValue,
-    parentGoalId,
-  } = bodyParsed.data;
-
-  const [existing] = await db
-    .select()
-    .from(goalsTable)
-    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
-
-  if (!existing) {
-    res.status(404).json({ error: "Goal not found" });
-    return;
-  }
+  const { title, description, category, deadline, status, progress, successCriteria, cadence, goalType, targetValue, targetUnit, currentValue, parentGoalId } = bodyParsed.data;
+  const [existing] = await db.select().from(goalsTable).where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+  if (!existing) { res.status(404).json({ error: "Goal not found" }); return; }
 
   if (parentGoalId !== undefined && parentGoalId !== null) {
     const err = await validateParent(userId, parentGoalId, paramsParsed.data.id);
-    if (err) {
-      res.status(400).json({ error: err });
-      return;
-    }
+    if (err) { res.status(400).json({ error: err }); return; }
   }
 
   const updates: Partial<typeof goalsTable.$inferInsert> = {};
@@ -213,66 +140,72 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const isQuant = effectiveType === "target" || effectiveType === "average";
   const isMilestoneOrQuant = isQuant || effectiveType === "milestone";
 
-  if (cadence !== undefined) {
-    updates.cadence = isMilestoneOrQuant ? "ongoing" : cadence;
-  } else if (goalType !== undefined && isMilestoneOrQuant && existing.cadence !== "ongoing") {
-    updates.cadence = "ongoing";
-  }
+  if (cadence !== undefined) updates.cadence = isMilestoneOrQuant ? "ongoing" : cadence;
+  else if (goalType !== undefined && isMilestoneOrQuant && existing.cadence !== "ongoing") updates.cadence = "ongoing";
 
-  if (isQuant && effectiveTarget && effectiveTarget > 0) {
-    updates.progress = Math.min(100, Math.round((effectiveCurrent / effectiveTarget) * 100));
-  } else if (progress !== undefined) {
-    updates.progress = progress;
-  }
+  if (isQuant && effectiveTarget && effectiveTarget > 0) updates.progress = Math.min(100, Math.round((effectiveCurrent / effectiveTarget) * 100));
+  else if (progress !== undefined) updates.progress = progress;
 
-  if (Object.keys(updates).length === 0) {
-    res.status(400).json({ error: "No fields to update" });
-    return;
-  }
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No fields to update" }); return; }
 
-  // MySQL: no .returning() — update then re-select
-  await db
-    .update(goalsTable)
-    .set(updates)
-    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+  await db.update(goalsTable).set(updates).where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+  const [goal] = await db.select().from(goalsTable).where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+  if (!goal) { res.status(404).json({ error: "Goal not found" }); return; }
 
-  const [goal] = await db
-    .select()
-    .from(goalsTable)
-    .where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
+  const progressChanged = goal.progress !== existing.progress || goal.currentValue !== existing.currentValue;
+  const statusChanged = goal.status !== existing.status;
+  const eventType = statusChanged && goal.status === "completed"
+    ? "goal_completed"
+    : statusChanged && goal.status === "archived"
+      ? "goal_archived"
+      : progressChanged
+        ? "goal_updated"
+        : "goal_edited";
+  const descriptionText = eventType === "goal_completed"
+    ? `${goal.title} completed`
+    : eventType === "goal_archived"
+      ? `${goal.title} archived`
+      : progressChanged
+        ? `${goal.title} progress updated to ${goal.progress}%`
+        : `${goal.title} details updated`;
 
-  if (!goal) {
-    res.status(404).json({ error: "Goal not found" });
-    return;
-  }
+  await recordActivityEvent({
+    userId,
+    eventType,
+    source: "dashboard",
+    goalId: goal.id,
+    title: eventType === "goal_completed" ? "Goal completed" : eventType === "goal_archived" ? "Goal archived" : progressChanged ? "Goal updated" : "Goal edited",
+    description: descriptionText,
+    progress: goal.progress,
+    currentValue: goal.currentValue,
+    targetValue: goal.targetValue,
+    targetUnit: goal.targetUnit,
+    metadata: { changedFields: Object.keys(updates) },
+  });
 
   res.json(goal);
 });
 
 router.delete("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-
   const parsed = DeleteGoalParams.safeParse(req.params);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const [goal] = await db.select().from(goalsTable).where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
+  if (!goal) { res.status(404).json({ error: "Goal not found" }); return; }
 
-  // MySQL: no .returning() on DELETE — select first to confirm existence
-  const [goal] = await db
-    .select()
-    .from(goalsTable)
-    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
-
-  if (!goal) {
-    res.status(404).json({ error: "Goal not found" });
-    return;
-  }
-
-  await db
-    .delete(goalsTable)
-    .where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
-
+  await recordActivityEvent({
+    userId,
+    eventType: "goal_deleted",
+    source: "dashboard",
+    goalId: goal.id,
+    title: "Goal deleted",
+    description: goal.title,
+    progress: goal.progress,
+    currentValue: goal.currentValue,
+    targetValue: goal.targetValue,
+    targetUnit: goal.targetUnit,
+  });
+  await db.delete(goalsTable).where(and(eq(goalsTable.id, parsed.data.id), eq(goalsTable.userId, userId)));
   res.sendStatus(204);
 });
 
