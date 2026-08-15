@@ -5,6 +5,7 @@ export * from "./milestones";
 export * from "./daily-logs";
 export * from "./memory-summaries";
 export * from "./magic-links";
+export * from "./short-auth-links";
 export * from "./usage-tracking";
 export * from "./email-messages";
 export * from "./app-settings";
