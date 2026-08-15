@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { apiFetch } from "@/lib/api";
 
 const BAR_WIDTH = 14;
+const REFRESH_INTERVAL_MS = 15_000;
 
 function progressBar(progress: number) {
   const clamped = Math.max(0, Math.min(100, progress));
@@ -36,22 +37,24 @@ export function RecentActivityPreview({ refreshKey = 0 }: { refreshKey?: number 
   const [items, setItems] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const load = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsLoading(true);
     try {
       const response = await apiFetch("/api/activity?limit=8");
       if (!response.ok) throw new Error("Failed to load activity");
       const result = (await response.json()) as { activities?: Activity[] };
       setItems((result.activities ?? []).slice(0, 5));
     } catch {
-      setItems([]);
+      if (showLoading) setItems([]);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
+    void load(true);
+    const interval = window.setInterval(() => void load(false), REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
   }, [load, refreshKey]);
 
   return (
