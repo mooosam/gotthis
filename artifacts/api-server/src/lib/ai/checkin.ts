@@ -23,31 +23,72 @@ export interface CheckInResult {
   cacheHitTokens: number;
 }
 
+type ProgressMode = "add" | "set" | "reset" | "percent";
+
+interface RawGoalUpdate {
+  goalId: string;
+  mode: ProgressMode;
+  value: number | null;
+  percentProgress: number | null;
+  note: string;
+}
+
 interface ExtractedGoalUpdate {
   goalId: string;
   goalTitle: string;
   percentProgress: number;
   note: string;
+  mode: ProgressMode;
+  actionValue: number | null;
+  currentValue: number | null;
+  targetValue: number | null;
+  targetUnit: string | null;
 }
 
-function sanitizeGoalUpdates(updates: unknown, goalMap: Map<string, UserContext["goals"][number]>): ExtractedGoalUpdate[] {
+function parseRawGoalUpdates(
+  updates: unknown,
+  goalMap: Map<string, UserContext["goals"][number]>,
+): RawGoalUpdate[] {
   if (!Array.isArray(updates)) return [];
 
   return updates
     .slice(0, 5)
-    .filter((item): item is Partial<ExtractedGoalUpdate> => !!item && typeof item === "object")
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
     .map((item) => {
       const goalId = typeof item.goalId === "string" ? item.goalId : "";
-      const goal = goalMap.get(goalId);
-      const rawProgress = Number(item.percentProgress);
-      const percentProgress = Number.isFinite(rawProgress)
-        ? Math.max(0, Math.min(100, Math.round(rawProgress)))
-        : -1;
-      const goalTitle = goal?.title ?? "";
+      const rawMode = String(item.mode ?? "").toLowerCase();
+      const mode: ProgressMode = ["add", "set", "reset", "percent"].includes(rawMode)
+        ? (rawMode as ProgressMode)
+        : "percent";
+      const rawValue = Number(item.value);
+      const value = Number.isFinite(rawValue) ? Math.max(0, rawValue) : null;
+      const rawPercent = Number(item.percentProgress);
+      const percentProgress = Number.isFinite(rawPercent)
+        ? Math.max(0, Math.min(100, Math.round(rawPercent)))
+        : null;
       const note = typeof item.note === "string" ? item.note.trim().slice(0, 1000) : "";
-      return { goalId, goalTitle, percentProgress, note };
+      return { goalId, mode, value, percentProgress, note };
     })
-    .filter((item) => item.goalId && goalMap.has(item.goalId) && item.percentProgress >= 0);
+    .filter((item) => item.goalId && goalMap.has(item.goalId));
+}
+
+function renderSavedUpdateReply(update: ExtractedGoalUpdate): string {
+  if (update.mode === "reset") {
+    if (update.targetValue && update.targetUnit) {
+      return `Your progress for “${update.goalTitle}” is reset to 0. You have ${update.targetValue} ${update.targetUnit} remaining today.`;
+    }
+    return `Your progress for “${update.goalTitle}” is reset to 0% for today.`;
+  }
+
+  if (update.targetValue && update.targetUnit && update.currentValue !== null) {
+    const remaining = Math.max(0, update.targetValue - update.currentValue);
+    if (update.mode === "add" && update.actionValue !== null) {
+      return `Logged ${update.actionValue} ${update.targetUnit}. You're at ${update.currentValue} of ${update.targetValue} today (${update.percentProgress}%), with ${remaining} remaining.`;
+    }
+    return `You're at ${update.currentValue} of ${update.targetValue} ${update.targetUnit} today (${update.percentProgress}%), with ${remaining} remaining.`;
+  }
+
+  return `Your progress for “${update.goalTitle}” is now ${update.percentProgress}% today.`;
 }
 
 async function extractAndSaveGoalProgress(
@@ -59,10 +100,15 @@ async function extractAndSaveGoalProgress(
   }
 
   const goalListText = ctx.goals
-    .map((g) => `[${g.id}] ${g.title} (current progress: ${g.progress}%)`)
+    .map((g) => {
+      const target = g.targetValue
+        ? `; target: ${g.targetValue} ${g.targetUnit ?? "units"}; stored current value: ${g.currentValue}`
+        : "";
+      return `[${g.id}] ${g.title} (current progress: ${g.progress}%${target})`;
+    })
     .join("\n");
 
-  const extractionPrompt = `The user sent a goal progress update.
+  const extractionPrompt = `The user sent a goal progress update. Extract WHAT HAPPENED, not a calculated final percentage when a numeric target exists.
 
 <user_message>
 ${userMessage}
@@ -73,18 +119,21 @@ ${userMessage}
 Their active goals (use the EXACT goalId strings shown in brackets):
 ${goalListText}
 
-IMPORTANT: Reply with ONLY a raw JSON array — no markdown, no code fences, no explanation. Start your response with [ and end with ].
+IMPORTANT: Reply with ONLY a raw JSON array — no markdown, code fences, or explanation.
 
 Format:
-[{"goalId":"EXACT_ID_FROM_ABOVE","goalTitle":"exact title","percentProgress":10,"note":"what they said"}]
+[{"goalId":"EXACT_ID_FROM_ABOVE","mode":"add|set|reset|percent","value":10,"percentProgress":null,"note":"what they said"}]
 
 Rules:
-- Use the EXACT goalId string from the brackets above (copy it character-for-character).
+- Use the EXACT goalId from the list above.
 - Only include goals explicitly mentioned or clearly implied.
-- percentProgress is a number 0-100 representing today's completion of that goal.
-- Example: "did 5 pushups" toward a "50 pushups per day" goal → percentProgress: 10
-- Do not decrease existing progress unless the user explicitly says they failed.
-- If no goal is clearly mentioned, return: []`;
+- mode=add when the user reports an incremental amount they just did, e.g. "I did 10 pushups" -> value=10.
+- mode=set when the user states their TOTAL amount so far today, e.g. "I've done 28 pushups total" -> value=28.
+- mode=reset only when the user explicitly asks to reset/zero/restart today's progress.
+- mode=percent only when the user explicitly gives a percentage or the goal has no usable numeric target.
+- For add/set/reset, percentProgress should be null. The server will calculate the percentage from the stored target.
+- Never calculate 10 out of 50 yourself; return mode=add,value=10 and let the server do the arithmetic.
+- If no goal is clearly mentioned, return [].`;
 
   const userContent = [buildStaticContextBlock(ctx), extractionPrompt].join("\n\n");
 
@@ -105,39 +154,92 @@ Rules:
   try {
     parsedUpdates = JSON.parse(raw);
   } catch (err) {
-    console.warn("[goal-extract] JSON parse failed. Raw response:", rawText, "Error:", err);
+    logger.warn({ err, rawText }, "Goal extraction JSON parse failed");
   }
 
   const goalMap = new Map(ctx.goals.map((g) => [g.id, g]));
-  const validUpdates = sanitizeGoalUpdates(parsedUpdates, goalMap);
+  const rawUpdates = parseRawGoalUpdates(parsedUpdates, goalMap);
+  const appliedUpdates: ExtractedGoalUpdate[] = [];
+  const today = getDateInTimezone(ctx.user.timezone);
 
-  for (const update of validUpdates) {
+  for (const update of rawUpdates) {
     const goalMeta = goalMap.get(update.goalId);
-    const isDaily = goalMeta?.cadence === "daily";
-    const shouldStampReset = isDaily && goalMeta?.lastProgressResetDate !== getDateInTimezone(ctx.user.timezone);
+    if (!goalMeta) continue;
 
-    // Enforce the model's declared 0-100 range at the database boundary too.
-    // The goal ID is also validated against this user's active goals before writing.
+    const isDaily = goalMeta.cadence === "daily";
+    const isNewDay = isDaily && goalMeta.lastProgressResetDate !== today;
+    const targetValue = goalMeta.targetValue && goalMeta.targetValue > 0 ? goalMeta.targetValue : null;
+    const targetUnit = goalMeta.targetUnit?.trim() || null;
+
+    let nextProgress: number | null = null;
+    let nextCurrentValue: number | null = null;
+
+    if (targetValue) {
+      // Daily numeric habits historically did not keep currentValue in sync, so derive
+      // today's numeric baseline from progress. On a new day the baseline is always zero.
+      const baselineCurrent = isNewDay
+        ? 0
+        : goalMeta.cadence === "daily"
+          ? Math.round((Math.max(0, Math.min(100, goalMeta.progress)) / 100) * targetValue)
+          : Math.max(0, goalMeta.currentValue ?? 0);
+
+      if (update.mode === "reset") {
+        nextCurrentValue = 0;
+      } else if (update.mode === "add" && update.value !== null) {
+        nextCurrentValue = baselineCurrent + update.value;
+      } else if (update.mode === "set" && update.value !== null) {
+        nextCurrentValue = update.value;
+      } else if (update.mode === "percent" && update.percentProgress !== null) {
+        nextCurrentValue = Math.round((update.percentProgress / 100) * targetValue);
+      } else {
+        continue;
+      }
+
+      nextCurrentValue = Math.max(0, nextCurrentValue);
+      nextProgress = Math.max(0, Math.min(100, Math.round((nextCurrentValue / targetValue) * 100)));
+    } else {
+      if (update.mode === "reset") {
+        nextProgress = 0;
+      } else if (update.percentProgress !== null) {
+        nextProgress = update.percentProgress;
+      } else {
+        continue;
+      }
+    }
+
     await db
       .update(goalsTable)
       .set({
-        progress: update.percentProgress,
+        progress: nextProgress,
+        ...(nextCurrentValue !== null ? { currentValue: Math.round(nextCurrentValue) } : {}),
         lastCheckedAt: new Date(),
-        ...(shouldStampReset ? { lastProgressResetDate: getDateInTimezone(ctx.user.timezone) } : {}),
+        ...(isDaily ? { lastProgressResetDate: today } : {}),
       })
       .where(and(eq(goalsTable.id, update.goalId), eq(goalsTable.userId, ctx.user.id)));
 
-    if (isDaily && update.percentProgress >= 100) {
+    const applied: ExtractedGoalUpdate = {
+      goalId: update.goalId,
+      goalTitle: goalMeta.title,
+      percentProgress: nextProgress,
+      note: update.note,
+      mode: update.mode,
+      actionValue: update.value,
+      currentValue: nextCurrentValue !== null ? Math.round(nextCurrentValue) : null,
+      targetValue,
+      targetUnit,
+    };
+    appliedUpdates.push(applied);
+
+    if (isDaily && nextProgress >= 100) {
       try {
-        await updateStreakForGoal(update.goalId, ctx.user.id, update.goalTitle, update.percentProgress, ctx.user.timezone);
+        await updateStreakForGoal(update.goalId, ctx.user.id, goalMeta.title, nextProgress, ctx.user.timezone);
       } catch (err) {
         logger.warn({ err, goalId: update.goalId }, "Streak update failed for goal");
       }
     }
   }
 
-  if (validUpdates.length > 0) {
-    const today = getDateInTimezone(ctx.user.timezone);
+  if (appliedUpdates.length > 0) {
     const [existingLog] = await db
       .select()
       .from(dailyLogsTable)
@@ -146,7 +248,7 @@ Rules:
     if (existingLog) {
       const existing = (existingLog.data as Record<string, unknown> | null) ?? {};
       const previousUpdates = Array.isArray(existing.goalUpdates) ? existing.goalUpdates : [];
-      const mergedUpdates = [...previousUpdates, ...validUpdates].slice(-20);
+      const mergedUpdates = [...previousUpdates, ...appliedUpdates].slice(-20);
       await db
         .update(dailyLogsTable)
         .set({
@@ -164,7 +266,7 @@ Rules:
         userId: ctx.user.id,
         logDate: today,
         data: {
-          goalUpdates: validUpdates,
+          goalUpdates: appliedUpdates,
           midDayMessage: userMessage,
           midDayTimestamp: new Date().toISOString(),
         },
@@ -174,11 +276,21 @@ Rules:
   }
 
   logger.info(
-    { userId: ctx.user.id, savedCount: validUpdates.length, goalIds: validUpdates.map((u) => u.goalId) },
+    {
+      userId: ctx.user.id,
+      savedCount: appliedUpdates.length,
+      updates: appliedUpdates.map((u) => ({
+        goalId: u.goalId,
+        mode: u.mode,
+        actionValue: u.actionValue,
+        currentValue: u.currentValue,
+        progress: u.percentProgress,
+      })),
+    },
     "Goal progress extraction complete",
   );
 
-  return { updates: validUpdates, inputTokens, outputTokens };
+  return { updates: appliedUpdates, inputTokens, outputTokens };
 }
 
 export async function runCheckIn(
@@ -233,42 +345,23 @@ export async function runCheckIn(
         cacheHitTokens: 0,
       };
     }
-  }
 
-  const systemPrompt = buildSystemPrompt();
-  const staticContextBlock = buildStaticContextBlock(ctx);
-  const recentLogsBlock = buildRecentLogsBlock(ctx);
-
-  if (intent === "goal_update" && savedUpdates.length === 0) {
-    let noMatchReply: string;
-    if (ctx.goals.length === 0) {
-      noMatchReply =
-        "I couldn't find any active goals to log that against. Add a goal first and then send your update.";
-    } else {
-      const goalList = ctx.goals.map((g) => `- ${g.title}`).join("\n");
-      noMatchReply = `I wasn't able to match that to any of your active goals, so nothing was saved.\n\nYour active goals are:\n${goalList}\n\nCould you rephrase your update mentioning one of these goals?`;
-    }
+    // For saved goal updates, respond from the values the server actually wrote.
+    // Do not ask Gemini to redo arithmetic after persistence.
     return {
-      response: noMatchReply,
+      response: savedUpdates.map(renderSavedUpdateReply).join("\n"),
       inputTokens: extractionInputTokens,
       outputTokens: extractionOutputTokens,
       cacheHitTokens: 0,
     };
   }
 
-  let instructionSuffix: string;
-  if (intent === "goal_update" && savedUpdates.length > 0) {
-    const updateSummary = savedUpdates
-      .map((u) => {
-        const remaining = Math.max(0, 100 - u.percentProgress);
-        return `${u.goalTitle}: ${u.percentProgress}% done today (${remaining}% remaining)`;
-      })
-      .join(", ");
-    instructionSuffix = `The user reported goal progress. Progress has been saved: ${updateSummary}. Use the goal title to calculate concrete numbers remaining (e.g. if a '50 pushups' goal is 30% done, tell them they have 35 left). Acknowledge what they accomplished and state exactly how much is left. Keep your response to 2-3 sentences. Plain text only, no markdown, no emojis.`;
-  } else {
-    instructionSuffix =
-      "The user is checking in mid-day. Use the goal progress data above to answer precisely. If they ask how much is left for a goal, calculate it from the 'Progress today' percentage and the numeric target in the goal title (e.g. 70% remaining of a '50 pushups per day' goal = 35 pushups left). Be specific with numbers. Keep your response to 2-3 sentences. Plain text only, no markdown.";
-  }
+  const systemPrompt = buildSystemPrompt();
+  const staticContextBlock = buildStaticContextBlock(ctx);
+  const recentLogsBlock = buildRecentLogsBlock(ctx);
+
+  const instructionSuffix =
+    "The user is checking in mid-day. Use the goal progress data above to answer precisely. Be specific with numbers that are explicitly present in the goal context, but do not invent progress. Keep your response to 2-3 sentences. Plain text only, no markdown.";
 
   const userContent = [
     staticContextBlock,
@@ -284,8 +377,8 @@ export async function runCheckIn(
 
   return {
     response: responseText,
-    inputTokens: extractionInputTokens + coachInputTokens,
-    outputTokens: extractionOutputTokens + coachOutputTokens,
+    inputTokens: coachInputTokens,
+    outputTokens: coachOutputTokens,
     cacheHitTokens: 0,
   };
 }
