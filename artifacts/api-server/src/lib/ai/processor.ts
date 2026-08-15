@@ -5,6 +5,7 @@ import { validateUserMessage } from "./policy.js";
 import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
+import { createGoalFromMessage } from "./goal-create.js";
 import { checkPerMinuteThrottle } from "./throttle.js";
 import { getBaseUrl } from "../whatsapp/magic-link.js";
 
@@ -40,19 +41,16 @@ function renderDashboardReply(ctx: Awaited<ReturnType<typeof assembleContext>>):
 }
 
 export async function processMessage(userId: string, message: string): Promise<ProcessMessageResult> {
-  // Throttle before AI intent detection so rapid repeat messages do not consume Gemini tokens or other AI budget while the user is rate limited.
   const throttle = checkPerMinuteThrottle(userId);
   if (!throttle.allowed) return { reply: `You are sending messages too quickly. Try again in about ${throttle.retryAfterSeconds} seconds.`, intent: "rate_limited", dailyRemaining: 0, monthlyTokenRemaining: 0 };
 
-  // Validate untrusted user input before it reaches any model. Oversized, injection-like, destructive, and bulk requests are rejected server-side.
   const policy = validateUserMessage(message);
   if (!policy.allowed) return { reply: policy.reply, intent: policy.reason, dailyRemaining: 0, monthlyTokenRemaining: 0 };
   const safeMessage = policy.normalizedMessage;
 
   let ctx;
   try { ctx = await assembleContext(userId); }
-  catch (err) {
-    // Context assembly can fail independently of the user's message. Return a friendly retry response rather than exposing an internal DB/context error.
+  catch {
     return { reply: "I couldn't load your goal context just now. Please try again in a moment.", intent: "error", dailyRemaining: 0, monthlyTokenRemaining: 0 };
   }
 
@@ -62,7 +60,6 @@ export async function processMessage(userId: string, message: string): Promise<P
   const classification = await determineIntent(safeMessage, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
 
-  // Gemini intent detection consumes tokens before the final handler runs. Check the provisional total here so a message cannot start another AI operation that would push the user over their monthly allowance.
   if (classification.inputTokens > 0 || classification.outputTokens > 0) {
     const provisionalUser = { ...ctx.user, monthlyTokenCount: ctx.user.monthlyTokenCount + classification.inputTokens + classification.outputTokens };
     const provisionalBudget = checkBudgetForUser(provisionalUser);
@@ -77,11 +74,13 @@ export async function processMessage(userId: string, message: string): Promise<P
   let totalCacheHitTokens = 0;
   let reply: string;
 
-  if (intent === "dashboard" || intent === "goal_create") {
-    const base = getBaseUrl();
-    reply = intent === "goal_create"
-      ? `Absolutely. You can add your goal or milestone here:\n\n${base}/dashboard`
-      : renderDashboardReply(ctx);
+  if (intent === "dashboard") {
+    reply = renderDashboardReply(ctx);
+  } else if (intent === "goal_create") {
+    const result = await createGoalFromMessage(ctx, safeMessage);
+    reply = result.response;
+    totalInputTokens += result.inputTokens;
+    totalOutputTokens += result.outputTokens;
   } else if (intent === "off_topic") reply = OFF_TOPIC_REPLY;
   else if (intent === "morning_ritual") {
     const result = await runMorningRitual(ctx, safeMessage); reply = result.response; totalInputTokens += result.inputTokens; totalOutputTokens += result.outputTokens; totalCacheHitTokens += result.cacheHitTokens;
