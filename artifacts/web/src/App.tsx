@@ -19,6 +19,8 @@ import DataPolicyPage from "@/pages/data-policy";
 import OnboardingPage from "@/pages/onboarding";
 import DashboardPage from "@/pages/dashboard";
 import ActivityPage from "@/pages/activity";
+import AchievementsPage from "@/pages/achievements";
+import AchievementSharePage from "@/pages/achievement-share";
 import GoalsPage from "@/pages/goals";
 import GoalDetailPage from "@/pages/goal-detail";
 import ReviewPage from "@/pages/review";
@@ -45,9 +47,11 @@ function ClerkProviderWithRoutes() { const [, setLocation] = useLocation(); retu
   <Route path="/" component={HomePage} /><Route path="/pricing" component={PricingPage} /><Route path="/faq" component={FaqPage} /><Route path="/contact" component={ContactPage} /><Route path="/terms" component={TermsPage} /><Route path="/cookies" component={CookiesPage} /><Route path="/data-policy" component={DataPolicyPage} />
   <Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} />
   <Route path="/go/:code">{(params) => <WhatsAppAuthPage code={params.code} />}</Route>
+  <Route path="/achievement/:token">{(params) => <AchievementSharePage token={params.token} />}</Route>
   <Route path="/onboarding"><Show when="signed-in"><OnboardingPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
   <Route path="/dashboard"><Show when="signed-in"><DashboardPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
   <Route path="/activity"><Show when="signed-in"><ActivityPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
+  <Route path="/achievements"><Show when="signed-in"><AchievementsPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
   <Route path="/goals"><Show when="signed-in"><GoalsPage /></Show><Show when="signed-out"><Redirect to="/" /></Show></Route>
   <Route path="/goal/:goalId">{(params) => <><Show when="signed-in"><GoalDetailPage id={params.goalId} /></Show><Show when="signed-out"><Redirect to="/" /></Show></>}</Route>
   <Route path="/review/:date">{(params) => <><Show when="signed-in"><ReviewPage date={params.date} /></Show><Show when="signed-out"><Redirect to="/" /></Show></>}</Route>
