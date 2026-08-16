@@ -3,6 +3,7 @@ import {
   achievementsTable,
   db,
   goalsTable,
+  milestonesTable,
   usersTable,
 } from "@workspace/db";
 import { and, eq, or } from "drizzle-orm";
@@ -53,7 +54,6 @@ async function createAchievement(input: CreateAchievementInput): Promise<boolean
     });
     return true;
   } catch {
-    // Unique dedupe-key collisions are expected when the same threshold is seen again.
     logger.debug({ userId: input.userId, dedupeKey: input.dedupeKey }, "Achievement already recorded");
     return false;
   }
@@ -199,7 +199,43 @@ export async function evaluateAchievementsForEvent(input: AchievementEventInput)
       }
     }
   } catch (err) {
-    // Achievement evaluation must never break the underlying user action.
     logger.warn({ err, userId: input.userId, eventType: input.eventType }, "Achievement evaluation failed");
+  }
+}
+
+export async function reconcileAchievementsForUser(userId: string): Promise<void> {
+  try {
+    const goals = await db.select().from(goalsTable).where(eq(goalsTable.userId, userId));
+    for (const goal of goals) {
+      await evaluateAchievementsForEvent({
+        userId,
+        eventType: goal.status === "completed" ? "goal_completed" : "reconcile",
+        goalId: goal.id,
+        progress: goal.progress,
+        currentValue: goal.currentValue,
+        targetValue: goal.targetValue,
+        targetUnit: goal.targetUnit,
+      });
+    }
+
+    const [completedMilestone] = await db
+      .select()
+      .from(milestonesTable)
+      .where(and(eq(milestonesTable.userId, userId), eq(milestonesTable.completed, true)))
+      .limit(1);
+    if (completedMilestone) {
+      await evaluateAchievementsForEvent({
+        userId,
+        eventType: "milestone_completed",
+        goalId: completedMilestone.goalId,
+        milestoneId: completedMilestone.id,
+        occurredAt: completedMilestone.completedAt ?? completedMilestone.updatedAt,
+      });
+    }
+
+    // Reconcile check-in thresholds from the durable activity ledger.
+    await evaluateAchievementsForEvent({ userId, eventType: "check_in" });
+  } catch (err) {
+    logger.warn({ err, userId }, "Achievement reconciliation failed");
   }
 }
