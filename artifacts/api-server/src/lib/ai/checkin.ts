@@ -12,6 +12,7 @@ import { getTodayDate, loadFreshBudget } from "./usage.js";
 import type { MessageIntent } from "./classifier.js";
 import { logger } from "../logger.js";
 import { updateStreakForGoal, getDateInTimezone } from "./streaks.js";
+import { getCadencePeriodKey } from "../goals/daily-reset.js";
 
 export const OFF_TOPIC_REPLY =
   "I'm your goal coach — let's focus on your targets.";
@@ -43,6 +44,7 @@ interface ExtractedGoalUpdate {
   currentValue: number | null;
   targetValue: number | null;
   targetUnit: string | null;
+  cadence: string;
 }
 
 function parseRawGoalUpdates(
@@ -72,23 +74,31 @@ function parseRawGoalUpdates(
     .filter((item) => item.goalId && goalMap.has(item.goalId));
 }
 
+function cadencePeriodLabel(cadence: string): string {
+  if (cadence === "daily") return "today";
+  if (cadence === "weekly") return "this week";
+  if (cadence === "monthly") return "this month";
+  return "overall";
+}
+
 function renderSavedUpdateReply(update: ExtractedGoalUpdate): string {
+  const period = cadencePeriodLabel(update.cadence);
   if (update.mode === "reset") {
     if (update.targetValue && update.targetUnit) {
-      return `Your progress for “${update.goalTitle}” is reset to 0. You have ${update.targetValue} ${update.targetUnit} remaining today.`;
+      return `Your progress for “${update.goalTitle}” is reset to 0. You have ${update.targetValue} ${update.targetUnit} remaining ${period}.`;
     }
-    return `Your progress for “${update.goalTitle}” is reset to 0% for today.`;
+    return `Your progress for “${update.goalTitle}” is reset to 0% ${period}.`;
   }
 
   if (update.targetValue && update.targetUnit && update.currentValue !== null) {
     const remaining = Math.max(0, update.targetValue - update.currentValue);
     if (update.mode === "add" && update.actionValue !== null) {
-      return `Logged ${update.actionValue} ${update.targetUnit}. You're at ${update.currentValue} of ${update.targetValue} today (${update.percentProgress}%), with ${remaining} remaining.`;
+      return `Logged ${update.actionValue} ${update.targetUnit}. You're at ${update.currentValue} of ${update.targetValue} ${period} (${update.percentProgress}%), with ${remaining} remaining.`;
     }
-    return `You're at ${update.currentValue} of ${update.targetValue} ${update.targetUnit} today (${update.percentProgress}%), with ${remaining} remaining.`;
+    return `You're at ${update.currentValue} of ${update.targetValue} ${update.targetUnit} ${period} (${update.percentProgress}%), with ${remaining} remaining.`;
   }
 
-  return `Your progress for “${update.goalTitle}” is now ${update.percentProgress}% today.`;
+  return `Your progress for “${update.goalTitle}” is now ${update.percentProgress}% ${period}.`;
 }
 
 async function extractAndSaveGoalProgress(
@@ -104,7 +114,7 @@ async function extractAndSaveGoalProgress(
       const target = g.targetValue
         ? `; target: ${g.targetValue} ${g.targetUnit ?? "units"}; stored current value: ${g.currentValue}`
         : "";
-      return `[${g.id}] ${g.title} (current progress: ${g.progress}%${target})`;
+      return `[${g.id}] ${g.title} (cadence: ${g.cadence}; current progress: ${g.progress}%${target})`;
     })
     .join("\n");
 
@@ -128,8 +138,8 @@ Rules:
 - Use the EXACT goalId from the list above.
 - Only include goals explicitly mentioned or clearly implied.
 - mode=add when the user reports an incremental amount they just did, e.g. "I did 10 pushups" -> value=10.
-- mode=set when the user states their TOTAL amount so far today, e.g. "I've done 28 pushups total" -> value=28.
-- mode=reset only when the user explicitly asks to reset/zero/restart today's progress.
+- mode=set when the user states their TOTAL amount so far in the current goal period, e.g. "I've done 28 pushups total" -> value=28.
+- mode=reset only when the user explicitly asks to reset/zero/restart the current period's progress.
 - mode=percent only when the user explicitly gives a percentage or the goal has no usable numeric target.
 - For add/set/reset, percentProgress should be null. The server will calculate the percentage from the stored target.
 - Never calculate 10 out of 50 yourself; return mode=add,value=10 and let the server do the arithmetic.
@@ -166,8 +176,9 @@ Rules:
     const goalMeta = goalMap.get(update.goalId);
     if (!goalMeta) continue;
 
-    const isDaily = goalMeta.cadence === "daily";
-    const isNewDay = isDaily && goalMeta.lastProgressResetDate !== today;
+    const periodKey = getCadencePeriodKey(goalMeta.cadence, ctx.user.timezone);
+    const isRecurring = periodKey !== null;
+    const isNewPeriod = isRecurring && goalMeta.lastProgressResetDate !== periodKey;
     const targetValue = goalMeta.targetValue && goalMeta.targetValue > 0 ? goalMeta.targetValue : null;
     const targetUnit = goalMeta.targetUnit?.trim() || null;
 
@@ -175,13 +186,13 @@ Rules:
     let nextCurrentValue: number | null = null;
 
     if (targetValue) {
-      // Daily numeric habits historically did not keep currentValue in sync, so derive
-      // today's numeric baseline from progress. On a new day the baseline is always zero.
-      const baselineCurrent = isNewDay
+      const legacyDerivedCurrent = Math.round((Math.max(0, Math.min(100, goalMeta.progress)) / 100) * targetValue);
+      const storedCurrent = Math.max(0, goalMeta.currentValue ?? 0);
+      const baselineCurrent = isNewPeriod
         ? 0
-        : goalMeta.cadence === "daily"
-          ? Math.round((Math.max(0, Math.min(100, goalMeta.progress)) / 100) * targetValue)
-          : Math.max(0, goalMeta.currentValue ?? 0);
+        : isRecurring && storedCurrent === 0 && goalMeta.progress > 0
+          ? legacyDerivedCurrent
+          : storedCurrent;
 
       if (update.mode === "reset") {
         nextCurrentValue = 0;
@@ -213,7 +224,7 @@ Rules:
         progress: nextProgress,
         ...(nextCurrentValue !== null ? { currentValue: Math.round(nextCurrentValue) } : {}),
         lastCheckedAt: new Date(),
-        ...(isDaily ? { lastProgressResetDate: today } : {}),
+        ...(periodKey ? { lastProgressResetDate: periodKey } : {}),
       })
       .where(and(eq(goalsTable.id, update.goalId), eq(goalsTable.userId, ctx.user.id)));
 
@@ -227,10 +238,11 @@ Rules:
       currentValue: nextCurrentValue !== null ? Math.round(nextCurrentValue) : null,
       targetValue,
       targetUnit,
+      cadence: goalMeta.cadence,
     };
     appliedUpdates.push(applied);
 
-    if (isDaily && nextProgress >= 100) {
+    if (goalMeta.cadence === "daily" && nextProgress >= 100) {
       try {
         await updateStreakForGoal(update.goalId, ctx.user.id, goalMeta.title, nextProgress, ctx.user.timezone);
       } catch (err) {
@@ -285,6 +297,7 @@ Rules:
         actionValue: u.actionValue,
         currentValue: u.currentValue,
         progress: u.percentProgress,
+        cadence: u.cadence,
       })),
     },
     "Goal progress extraction complete",
@@ -346,8 +359,6 @@ export async function runCheckIn(
       };
     }
 
-    // For saved goal updates, respond from the values the server actually wrote.
-    // Do not ask Gemini to redo arithmetic after persistence.
     return {
       response: savedUpdates.map(renderSavedUpdateReply).join("\n"),
       inputTokens: extractionInputTokens,
