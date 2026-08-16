@@ -11,5 +11,8 @@ export type CreateGoalBodyCadence =
 
 export const CreateGoalBodyCadence = {
   daily: "daily",
+  weekly: "weekly",
+  monthly: "monthly",
+  one_time: "one_time",
   ongoing: "ongoing",
 } as const;
