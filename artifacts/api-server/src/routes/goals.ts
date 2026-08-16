@@ -15,6 +15,23 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+const SUPPORTED_CADENCES = new Set(["daily", "weekly", "monthly", "one_time", "ongoing"]);
+
+function readCadence(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = (body as Record<string, unknown>).cadence;
+  if (value === undefined) return undefined;
+  return typeof value === "string" && SUPPORTED_CADENCES.has(value) ? value : "__invalid__";
+}
+
+function bodyForLegacyGeneratedValidator(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const raw = body as Record<string, unknown>;
+  if (["weekly", "monthly", "one_time"].includes(String(raw.cadence ?? ""))) {
+    return { ...raw, cadence: "ongoing" };
+  }
+  return body;
+}
 
 async function validateParent(
   userId: string,
@@ -51,12 +68,14 @@ router.get("/goals", requireAuth, async (req, res): Promise<void> => {
 
 router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
-  const parsed = CreateGoalBody.safeParse(req.body);
+  const requestedCadence = readCadence(req.body);
+  if (requestedCadence === "__invalid__") { res.status(400).json({ error: "cadence must be daily, weekly, monthly, one_time, or ongoing" }); return; }
+  const parsed = CreateGoalBody.safeParse(bodyForLegacyGeneratedValidator(req.body));
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const { title, description, category, deadline, successCriteria, cadence, goalType, targetValue, targetUnit, parentGoalId } = parsed.data;
+  const { title, description, category, deadline, successCriteria, goalType, targetValue, targetUnit, parentGoalId } = parsed.data;
   const resolvedType = goalType ?? "habit";
-  const resolvedCadence = resolvedType === "target" || resolvedType === "average" || resolvedType === "milestone" ? "ongoing" : (cadence ?? "daily");
+  const resolvedCadence = requestedCadence ?? (resolvedType === "milestone" ? "one_time" : "daily");
 
   if (parentGoalId) {
     const err = await validateParent(userId, parentGoalId, null);
@@ -92,6 +111,7 @@ router.post("/goals", requireAuth, requireGoalSlot(), async (req, res): Promise<
     currentValue: 0,
     targetValue: targetValue ?? null,
     targetUnit: targetUnit ?? null,
+    metadata: { cadence: resolvedCadence },
   });
   res.status(201).json(goal);
 });
@@ -109,10 +129,12 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
   const paramsParsed = UpdateGoalParams.safeParse(req.params);
   if (!paramsParsed.success) { res.status(400).json({ error: paramsParsed.error.message }); return; }
-  const bodyParsed = UpdateGoalBody.safeParse(req.body);
+  const requestedCadence = readCadence(req.body);
+  if (requestedCadence === "__invalid__") { res.status(400).json({ error: "cadence must be daily, weekly, monthly, one_time, or ongoing" }); return; }
+  const bodyParsed = UpdateGoalBody.safeParse(bodyForLegacyGeneratedValidator(req.body));
   if (!bodyParsed.success) { res.status(400).json({ error: bodyParsed.error.message }); return; }
 
-  const { title, description, category, deadline, status, progress, successCriteria, cadence, goalType, targetValue, targetUnit, currentValue, parentGoalId } = bodyParsed.data;
+  const { title, description, category, deadline, status, progress, successCriteria, goalType, targetValue, targetUnit, currentValue, parentGoalId } = bodyParsed.data;
   const [existing] = await db.select().from(goalsTable).where(and(eq(goalsTable.id, paramsParsed.data.id), eq(goalsTable.userId, userId)));
   if (!existing) { res.status(404).json({ error: "Goal not found" }); return; }
 
@@ -133,18 +155,25 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (targetUnit !== undefined) updates.targetUnit = targetUnit;
   if (currentValue !== undefined) updates.currentValue = currentValue;
   if (parentGoalId !== undefined) updates.parentGoalId = parentGoalId;
+  if (requestedCadence && requestedCadence !== "__invalid__") {
+    updates.cadence = requestedCadence;
+    if (requestedCadence !== existing.cadence) {
+      updates.progress = 0;
+      updates.currentValue = 0;
+      updates.lastProgressResetDate = null;
+    }
+  }
 
   const effectiveType = goalType ?? existing.goalType;
   const effectiveTarget = targetValue !== undefined ? targetValue : existing.targetValue;
-  const effectiveCurrent = currentValue !== undefined ? currentValue : existing.currentValue;
+  const effectiveCurrent = updates.currentValue !== undefined ? updates.currentValue : existing.currentValue;
   const isQuant = effectiveType === "target" || effectiveType === "average";
-  const isMilestoneOrQuant = isQuant || effectiveType === "milestone";
 
-  if (cadence !== undefined) updates.cadence = isMilestoneOrQuant ? "ongoing" : cadence;
-  else if (goalType !== undefined && isMilestoneOrQuant && existing.cadence !== "ongoing") updates.cadence = "ongoing";
-
-  if (isQuant && effectiveTarget && effectiveTarget > 0) updates.progress = Math.min(100, Math.round((effectiveCurrent / effectiveTarget) * 100));
-  else if (progress !== undefined) updates.progress = progress;
+  if (isQuant && effectiveTarget && effectiveTarget > 0 && requestedCadence === undefined) {
+    updates.progress = Math.min(100, Math.round((effectiveCurrent / effectiveTarget) * 100));
+  } else if (!isQuant && progress !== undefined && requestedCadence === undefined) {
+    updates.progress = progress;
+  }
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No fields to update" }); return; }
 
@@ -180,7 +209,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     currentValue: goal.currentValue,
     targetValue: goal.targetValue,
     targetUnit: goal.targetUnit,
-    metadata: { changedFields: Object.keys(updates) },
+    metadata: { changedFields: Object.keys(updates), cadence: goal.cadence },
   });
 
   res.json(goal);
