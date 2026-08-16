@@ -7,7 +7,7 @@ import {
 } from "@workspace/db";
 import { and, eq, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { logger } from "../logger.js";
+import { logger } from "./logger.js";
 
 export interface AchievementEventInput {
   userId: string;
@@ -52,9 +52,9 @@ async function createAchievement(input: CreateAchievementInput): Promise<boolean
       sharedAt: null,
     });
     return true;
-  } catch (err) {
+  } catch {
     // Unique dedupe-key collisions are expected when the same threshold is seen again.
-    logger.debug?.({ userId: input.userId, dedupeKey: input.dedupeKey }, "Achievement already recorded");
+    logger.debug({ userId: input.userId, dedupeKey: input.dedupeKey }, "Achievement already recorded");
     return false;
   }
 }
