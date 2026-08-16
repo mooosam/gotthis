@@ -1,6 +1,7 @@
 import { db, activityEventsTable } from "@workspace/db";
 import { nanoid } from "nanoid";
 import { logger } from "./logger.js";
+import { evaluateAchievementsForEvent } from "./achievements.js";
 
 export type ActivitySource = "dashboard" | "whatsapp" | "api" | "system";
 
@@ -23,6 +24,7 @@ export interface RecordActivityEventInput {
 
 export async function recordActivityEvent(input: RecordActivityEventInput): Promise<void> {
   try {
+    const occurredAt = input.occurredAt ?? new Date();
     await db.insert(activityEventsTable).values({
       id: nanoid(),
       userId: input.userId,
@@ -38,7 +40,21 @@ export async function recordActivityEvent(input: RecordActivityEventInput): Prom
       targetUnit: input.targetUnit?.slice(0, 100) ?? null,
       metadata: input.metadata ?? null,
       dedupeKey: input.dedupeKey ?? null,
-      occurredAt: input.occurredAt ?? new Date(),
+      occurredAt,
+    });
+
+    // Achievement detection is intentionally downstream of the durable activity write.
+    // It is best-effort and can never block the user's underlying goal/check-in action.
+    void evaluateAchievementsForEvent({
+      userId: input.userId,
+      eventType: input.eventType,
+      goalId: input.goalId,
+      milestoneId: input.milestoneId,
+      progress: input.progress,
+      currentValue: input.currentValue,
+      targetValue: input.targetValue,
+      targetUnit: input.targetUnit,
+      occurredAt,
     });
   } catch (err) {
     logger.warn(
