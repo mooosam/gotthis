@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { achievementsTable, db, goalsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { reconcileAchievementsForUser } from "../lib/achievements.js";
 import { nanoid } from "nanoid";
 
 const router: IRouter = Router();
@@ -26,6 +27,7 @@ function achievementPayload(achievement: typeof achievementsTable.$inferSelect, 
 
 router.get("/achievements", requireAuth, async (req, res): Promise<void> => {
   const userId = (req as typeof req & { userId: string }).userId;
+  await reconcileAchievementsForUser(userId);
   const rows = await db
     .select({ achievement: achievementsTable, goalTitle: goalsTable.title })
     .from(achievementsTable)
