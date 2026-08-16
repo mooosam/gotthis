@@ -5,7 +5,7 @@ import { validateUserMessage } from "./policy.js";
 import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
-import { createGoalFromMessage } from "./goal-create.js";
+import { createGoalFromMessage, cadenceFromClarification, completePendingGoalCadence } from "./goal-create.js";
 import { checkPerMinuteThrottle } from "./throttle.js";
 import { createAuthenticatedShortLink } from "../whatsapp/auth-link.js";
 import { recordActivityEvent, type ActivitySource } from "../activity-events.js";
@@ -58,6 +58,22 @@ export async function processMessage(
 
   const initialBudget = checkBudgetForUser(ctx.user);
   if (!initialBudget.allowed) return { reply: initialBudget.reason ?? "You have reached your usage limit.", intent: "budget_exceeded", dailyRemaining: initialBudget.dailyRemaining, monthlyTokenRemaining: initialBudget.monthlyTokenRemaining, upgradePrompt: initialBudget.upgradePrompt };
+
+  // Cadence clarification is conversational state, not a fresh intent. Handle a
+  // reply such as "weekly" before classification so it completes the pending
+  // goal instead of being mistaken for an unrelated one-word message.
+  const pendingCadence = cadenceFromClarification(safeMessage);
+  if (pendingCadence && ctx.user.pendingGoalDraft) {
+    const result = await completePendingGoalCadence(ctx, pendingCadence, source);
+    await recordUsage(userId, 0, 0, 0);
+    const { budget: freshBudget } = await loadFreshBudget(userId);
+    return {
+      reply: result.response,
+      intent: "goal_create",
+      dailyRemaining: freshBudget.dailyRemaining,
+      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
+    };
+  }
 
   const classification = await determineIntent(safeMessage, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
