@@ -10,6 +10,15 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+export type PendingGoalDraft = {
+  title: string;
+  category: string;
+  goalType: "habit" | "target" | "average" | "milestone";
+  targetValue: number | null;
+  targetUnit: string | null;
+  createdAt: string;
+};
+
 export const usersTable = mysqlTable("users", {
   id: varchar("id", { length: 255 }).primaryKey(),
   email: text("email").notNull(),
@@ -37,6 +46,7 @@ export const usersTable = mysqlTable("users", {
   preferredPushHour: int("preferred_push_hour").notNull().default(8),
   engagementSamples: json("engagement_samples").$type<Array<{ hour: number; responded: boolean; ts: string }>>().notNull().default([]),
   lastWeeklyInsightAt: timestamp("last_weekly_insight_at"),
+  pendingGoalDraft: json("pending_goal_draft").$type<PendingGoalDraft | null>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
