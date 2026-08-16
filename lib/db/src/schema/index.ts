@@ -7,6 +7,7 @@ export * from "./memory-summaries";
 export * from "./magic-links";
 export * from "./short-auth-links";
 export * from "./activity-events";
+export * from "./achievements";
 export * from "./usage-tracking";
 export * from "./email-messages";
 export * from "./app-settings";
