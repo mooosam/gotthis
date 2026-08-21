@@ -1,51 +1,9 @@
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { QRCodeSVG } from "qrcode.react";
 import PublicLayout from "@/components/public-layout";
 
-function seededRand(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    return (s >>> 0) / 0xffffffff;
-  };
-}
-
-function QrPlaceholder() {
-  const modules = useMemo(() => {
-    const rng = seededRand(42);
-    const skip = (x: number, y: number) =>
-      (x < 28 && y < 28) || (x > 72 && y < 28) || (x < 28 && y > 72);
-    const rects: { x: number; y: number }[] = [];
-    for (let y = 4; y < 96; y += 4) {
-      for (let x = 4; x < 96; x += 4) {
-        if (skip(x, y)) continue;
-        if (rng() > 0.5) rects.push({ x, y });
-      }
-    }
-    return rects;
-  }, []);
-
-  return (
-    <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: "block" }}>
-      <rect width="100" height="100" fill="#fff" />
-      <g fill="#121212">
-        <rect x="4" y="4" width="22" height="22" />
-        <rect x="74" y="4" width="22" height="22" />
-        <rect x="4" y="74" width="22" height="22" />
-        <rect x="8" y="8" width="14" height="14" fill="#fff" />
-        <rect x="78" y="8" width="14" height="14" fill="#fff" />
-        <rect x="8" y="78" width="14" height="14" fill="#fff" />
-        <rect x="11" y="11" width="8" height="8" />
-        <rect x="81" y="11" width="8" height="8" />
-        <rect x="11" y="81" width="8" height="8" />
-        {modules.map((m) => (
-          <rect key={`${m.x}-${m.y}`} x={m.x} y={m.y} width="4" height="4" />
-        ))}
-      </g>
-    </svg>
-  );
-}
+const WHATSAPP_LINK = "https://wa.me/message/OCLPODRTGF7WH1";
 
 export default function LandingPage() {
   const heroRef = useRef<HTMLElement>(null);
@@ -57,18 +15,6 @@ export default function LandingPage() {
   const liveBubbleRef = useRef<HTMLDivElement>(null);
   const counterValRef = useRef<HTMLDivElement>(null);
   const counterDeltaRef = useRef<HTMLDivElement>(null);
-  const [waUrl, setWaUrl] = useState<string | null>(null);
-
-  // Fetch the bot's WhatsApp number to build a real wa.me QR code
-  useEffect(() => {
-    fetch("/api/whatsapp/bot-number")
-      .then((r) => r.json())
-      .then((data: { phone: string | null }) => {
-        if (data.phone) setWaUrl(`https://wa.me/${data.phone}?text=Hi`);
-      })
-      .catch(() => {});
-  }, []);
-
   // Sticky CTA after hero scroll
   useEffect(() => {
     const cta = ctaRef.current;
@@ -171,27 +117,24 @@ export default function LandingPage() {
               No new apps. No logins. Just text your progress and watch your dashboard grow.
             </p>
             <a
-              href={waUrl ?? "/sign-up"}
+              href={WHATSAPP_LINK}
               className="pub-qr-card"
               style={{ display: "flex", alignItems: "center", gap: 22, textDecoration: "none", cursor: "pointer" }}
-              {...(waUrl ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              target="_blank"
+              rel="noopener noreferrer"
             >
               <div className="pub-qr-frame">
-                {waUrl ? (
-                  <QRCodeSVG
-                    value={waUrl}
-                    size={120}
-                    bgColor="#ffffff"
-                    fgColor="#121212"
-                    style={{ display: "block", width: "100%", height: "100%" }}
-                  />
-                ) : (
-                  <QrPlaceholder />
-                )}
+                <QRCodeSVG
+                  value={WHATSAPP_LINK}
+                  size={120}
+                  bgColor="#ffffff"
+                  fgColor="#121212"
+                  style={{ display: "block", width: "100%", height: "100%" }}
+                />
               </div>
               <div>
                 <div className="pub-qr-title">
-                  {waUrl ? "↳ Scan to open WhatsApp" : "↳ Scan or click to sign up"}
+                  ↳ Scan to open WhatsApp
                 </div>
                 <div className="pub-qr-headline">Create your GotThis account in 10 seconds.</div>
                 <div className="pub-qr-micro">No download required.</div>

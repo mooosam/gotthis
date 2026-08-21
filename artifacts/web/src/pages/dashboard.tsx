@@ -552,7 +552,7 @@ export default function DashboardPage() {
 
         {/* WhatsApp is now a convenience CTA rather than an onboarding block. */}
         <a
-          href="https://wa.me/message/XJSBCCYJ5KCPH1"
+          href="https://wa.me/message/OCLPODRTGF7WH1"
           target="_blank"
           rel="noopener noreferrer"
           style={{
