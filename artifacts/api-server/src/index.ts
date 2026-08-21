@@ -7,8 +7,8 @@ import { startDailyResetCron } from "./lib/goals/daily-reset.js";
 import { startStripeReconcileCron } from "./lib/stripe-reconcile.js";
 import { startCleanupCron } from "./lib/cleanup.js";
 import { seedDefaultPlans } from "./lib/seed-plans.js";
+import { isGrowthMode, proactiveWhatsAppEnabled } from "./lib/growth-mode.js";
 
-// Catch unhandled promise rejections so they are logged rather than crashing the process in Node 15+.
 process.on("unhandledRejection", (reason) => {
   logger.error({ err: reason }, "Unhandled promise rejection — keeping process alive");
 });
@@ -16,25 +16,14 @@ process.on("unhandledRejection", (reason) => {
 if (process.env.NODE_ENV === "production") {
   const required = ["DATABASE_URL", "CLERK_SECRET_KEY", "PHONE_PEPPER"];
   for (const key of required) {
-    if (!process.env[key]) {
-      throw new Error(`${key} environment variable is required in production but was not provided.`);
-    }
+    if (!process.env[key]) throw new Error(`${key} environment variable is required in production but was not provided.`);
   }
 }
 
 const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
+if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");
 const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+if (Number.isNaN(port) || port <= 0) throw new Error(`Invalid PORT value: "${rawPort}"`);
 
 app.listen(port, (err) => {
   if (err) {
@@ -42,13 +31,16 @@ app.listen(port, (err) => {
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  logger.info({ port, growthMode: isGrowthMode(), proactiveWhatsApp: proactiveWhatsAppEnabled() }, "Server listening");
+  seedDefaultPlans().catch((seedErr) => logger.warn({ err: seedErr }, "Plan seed failed"));
 
-  seedDefaultPlans().catch((seedErr) => {
-    logger.warn({ err: seedErr }, "Plan seed failed");
-  });
+  if (proactiveWhatsAppEnabled()) {
+    startWeeklyChartCron(sendToJid);
+  } else {
+    logger.info("Proactive WhatsApp disabled — inbound replies remain enabled");
+  }
 
-  startWeeklyChartCron(sendToJid);
+  // Email newsletter is separate from WhatsApp pricing and remains independently configurable.
   startNewsletterCron();
   startDailyResetCron();
   startStripeReconcileCron();
