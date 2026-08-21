@@ -28,27 +28,43 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
           throw new Error(payload?.error ?? "This link is no longer available.");
         }
 
-        const { error } = await signIn.ticket({ ticket: payload.ticket });
-        if (error) throw new Error("Could not sign you in from this link.");
-
-        if (signIn.status !== "complete") {
-          throw new Error("Could not complete sign-in from this link.");
+        const ticketResult = await signIn.ticket({ ticket: payload.ticket });
+        if (ticketResult.error) {
+          throw new Error("Could not sign you in from this link.");
         }
 
-        const destination = payload.destination;
+        // Clerk's hook state can lag behind signIn.ticket(). Rely on the result of
+        // the operation itself and finalize the newly created sign-in directly.
+        let destinationUrl = payload.destination;
         const finalizeResult = await signIn.finalize({
           navigate: ({ decorateUrl }) => {
-            const url = decorateUrl(destination);
-            if (url.startsWith("http://") || url.startsWith("https://")) {
-              window.location.href = url;
-            } else {
-              setLocation(url);
-            }
+            destinationUrl = decorateUrl(payload.destination);
           },
         });
 
         if (finalizeResult.error) {
           throw new Error("Could not activate your GotThis session.");
+        }
+
+        // Only burn the single-use short link after Clerk has successfully
+        // established the browser session. A transient browser/auth failure can
+        // therefore be retried with the same link while it is still within TTL.
+        const consumeResponse = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/consume`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (!consumeResponse.ok) {
+          const consumePayload = (await consumeResponse.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(consumePayload?.error ?? "Could not finish opening this link.");
+        }
+
+        if (destinationUrl.startsWith("http://") || destinationUrl.startsWith("https://")) {
+          window.location.href = destinationUrl;
+        } else {
+          setLocation(destinationUrl);
         }
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Could not open this link.");
