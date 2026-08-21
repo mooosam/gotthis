@@ -18,6 +18,7 @@ import emailRouter from "./email";
 import shareRouter from "./share";
 import skipCreditsRouter from "./skip-credits";
 import adminRouter from "./admin";
+import adminGrowthRouter from "./admin-growth";
 import adminStripeRouter from "./admin-stripe";
 import billingRouter from "./billing";
 
@@ -42,6 +43,7 @@ router.use(emailRouter);
 router.use(shareRouter);
 router.use(skipCreditsRouter);
 router.use(adminRouter);
+router.use(adminGrowthRouter);
 router.use(adminStripeRouter);
 router.use(billingRouter);
 
