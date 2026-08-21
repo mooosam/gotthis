@@ -37,7 +37,26 @@ const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 function stripBase(path: string): string { return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || "/" : path; }
 if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
-function SignInPage() { return <div className="flex justify-center mt-8"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} /></div>; }
+
+function safeSignInRedirect(): string {
+  const redirect = new URLSearchParams(window.location.search).get("redirect");
+  if (!redirect || !redirect.startsWith("/") || redirect.startsWith("//")) return "/dashboard";
+  return redirect;
+}
+
+function SignInPage() {
+  const redirect = safeSignInRedirect();
+  return (
+    <div className="flex justify-center mt-8">
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+        fallbackRedirectUrl={`${basePath}${redirect}`}
+      />
+    </div>
+  );
+}
 function SignUpPage() { return <div className="flex justify-center mt-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/onboarding`} /></div>; }
 function ClerkAuthSetup() { const { getToken } = useAuth(); useEffect(() => { const getter = () => getToken(); setAuthTokenGetter(getter); setTokenGetter(getter); return () => { setAuthTokenGetter(null); setTokenGetter(null); }; }, [getToken]); return null; }
 function ClerkQueryClientCacheInvalidator() { const { addListener } = useClerk(); const queryClient = useQueryClient(); const prevUserIdRef = useRef<string | null | undefined>(undefined); useEffect(() => { const unsubscribe = addListener(({ user }) => { const userId = user?.id ?? null; if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId) queryClient.clear(); prevUserIdRef.current = userId; }); return unsubscribe; }, [addListener, queryClient]); return null; }
