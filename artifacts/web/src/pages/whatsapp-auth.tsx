@@ -1,19 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { useSignIn } from "@clerk/react";
+import { useUser } from "@clerk/react";
 import { useLocation } from "wouter";
 import { apiFetch } from "@/lib/api";
 
 export default function WhatsAppAuthPage({ code }: { code: string }) {
-  const { signIn } = useSignIn();
+  const { isLoaded, isSignedIn } = useUser();
   const [, setLocation] = useLocation();
   const started = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (started.current) return;
+    if (!isLoaded || started.current) return;
+
+    // WhatsApp often opens links in a browser that has no existing GotThis
+    // session. In that case, use the normal Clerk sign-in flow instead of trying
+    // to manufacture a session from a one-time ticket. After sign-in, Clerk sends
+    // the user back to this short-link route and we finish opening the dashboard.
+    if (!isSignedIn) {
+      started.current = true;
+      const returnTo = `/go/${encodeURIComponent(code)}`;
+      setLocation(`/sign-in?redirect=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+
     started.current = true;
 
-    const redeem = async () => {
+    const openLink = async () => {
       try {
         const response = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/redeem`, {
           method: "POST",
@@ -21,34 +33,16 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
         });
 
         const payload = (await response.json().catch(() => null)) as
-          | { ticket?: string; destination?: string; error?: string }
+          | { destination?: string; error?: string }
           | null;
 
-        if (!response.ok || !payload?.ticket || !payload.destination) {
+        if (!response.ok || !payload?.destination) {
           throw new Error(payload?.error ?? "This link is no longer available.");
         }
 
-        const ticketResult = await signIn.ticket({ ticket: payload.ticket });
-        if (ticketResult.error) {
-          throw new Error("Could not sign you in from this link.");
-        }
-
-        // Clerk's hook state can lag behind signIn.ticket(). Rely on the result of
-        // the operation itself and finalize the newly created sign-in directly.
-        let destinationUrl = payload.destination;
-        const finalizeResult = await signIn.finalize({
-          navigate: ({ decorateUrl }) => {
-            destinationUrl = decorateUrl(payload.destination);
-          },
-        });
-
-        if (finalizeResult.error) {
-          throw new Error("Could not activate your GotThis session.");
-        }
-
-        // Only burn the single-use short link after Clerk has successfully
-        // established the browser session. A transient browser/auth failure can
-        // therefore be retried with the same link while it is still within TTL.
+        // The browser is now authenticated through the normal GotThis sign-in
+        // flow, so no Clerk ticket/finalize step is required. Consume the short
+        // link only immediately before navigating to its validated destination.
         const consumeResponse = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/consume`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -61,18 +55,18 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
           throw new Error(consumePayload?.error ?? "Could not finish opening this link.");
         }
 
-        if (destinationUrl.startsWith("http://") || destinationUrl.startsWith("https://")) {
-          window.location.href = destinationUrl;
+        if (payload.destination.startsWith("http://") || payload.destination.startsWith("https://")) {
+          window.location.href = payload.destination;
         } else {
-          setLocation(destinationUrl);
+          setLocation(payload.destination);
         }
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Could not open this link.");
       }
     };
 
-    void redeem();
-  }, [code, setLocation, signIn]);
+    void openLink();
+  }, [code, isLoaded, isSignedIn, setLocation]);
 
   return (
     <main className="min-h-screen bg-[#FAFAFA] px-6 py-16">
@@ -89,7 +83,11 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
           <>
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#E5E7EB] border-t-[#111827]" />
             <h1 className="mt-5 text-xl font-semibold text-[#111827]">Opening GotThis…</h1>
-            <p className="mt-2 text-sm text-[#6B7280]">Signing you in securely and taking you to your page.</p>
+            <p className="mt-2 text-sm text-[#6B7280]">
+              {isLoaded && !isSignedIn
+                ? "Taking you to sign in first."
+                : "Taking you to your dashboard."}
+            </p>
           </>
         )}
       </div>
