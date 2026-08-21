@@ -212,3 +212,15 @@
     font-family: "Geist Mono", monospace;
   }
 }
+
+/* Monthly AI token consumption is an internal operational metric. Keep it out
+   of the user-facing account UI; admins retain token reporting in /admin. */
+[data-testid="progress-monthly-tokens"] {
+  display: none;
+}
+[data-testid="progress-monthly-tokens"] + p {
+  display: none;
+}
+div:has(> [data-testid="progress-monthly-tokens"]) > .flex.justify-between.text-sm {
+  display: none;
+}
