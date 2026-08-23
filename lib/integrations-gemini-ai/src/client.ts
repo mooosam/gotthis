@@ -1,24 +1,34 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = process.env.GEMINI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
+const groqApiKey = process.env.GROQ_API_KEY;
 
-if (!apiKey) {
+if (!geminiApiKey) {
   throw new Error(
-    "No Gemini API key found. Set GEMINI_API_KEY to your key from aistudio.google.com.",
+    "No Gemini API key found. Set GEMINI_API_KEY to keep Gemini available as the fallback provider.",
   );
 }
 
-export const ai = new GoogleGenAI({ apiKey });
+export const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-/** Default model for main coaching responses (capable, fast). */
+/** Default Gemini fallback model. */
 export const GEMINI_FLASH = "gemini-2.5-flash";
-
-/** Alias — same model used for both "sonnet-class" and "haiku-class" tasks. */
 export const GEMINI_FAST = "gemini-2.5-flash";
 
-/** How long to wait for a Gemini response before giving up. */
-const GENERATE_TIMEOUT_MS = 30_000;
-const MAX_TRANSIENT_RETRIES = 2;
+/** Default Groq primary model. Override with GROQ_MODEL if needed. */
+export const GROQ_PRIMARY_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
+
+const GROQ_GENERATE_TIMEOUT_MS = 20_000;
+const GEMINI_GENERATE_TIMEOUT_MS = 30_000;
+const MAX_GEMINI_TRANSIENT_RETRIES = 1;
+
+export type GenerateResult = {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  provider: "groq" | "gemini";
+  fallbackUsed: boolean;
+};
 
 function isTransientGeminiError(error: unknown): boolean {
   const value = error as { status?: number; message?: string } | null;
@@ -28,25 +38,79 @@ function isTransientGeminiError(error: unknown): boolean {
     /temporarily|unavailable|high demand|rate.?limit|overloaded/i.test(message);
 }
 
-/**
- * Thin wrapper around generateContent that returns { text, inputTokens, outputTokens }.
- * Retries transient Gemini availability/rate-limit errors before surfacing the failure.
- * Handles the usageMetadata shape so callers don't have to.
- * Rejects with a timeout error if Gemini does not respond within GENERATE_TIMEOUT_MS.
- */
-export async function generate(opts: {
+async function generateWithGroq(opts: {
+  systemInstruction?: string;
+  userContent: string;
+  maxOutputTokens?: number;
+}): Promise<GenerateResult> {
+  if (!groqApiKey) {
+    throw new Error("GROQ_API_KEY is not configured");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GROQ_GENERATE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${groqApiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: GROQ_PRIMARY_MODEL,
+        messages: [
+          ...(opts.systemInstruction
+            ? [{ role: "system", content: opts.systemInstruction }]
+            : []),
+          { role: "user", content: opts.userContent },
+        ],
+        max_completion_tokens: opts.maxOutputTokens ?? 8192,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Groq request failed (${response.status}): ${body.slice(0, 500)}`);
+    }
+
+    const payload = await response.json() as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+
+    const text = payload.choices?.[0]?.message?.content ?? "";
+    if (!text.trim()) {
+      throw new Error("Groq returned an empty response");
+    }
+
+    return {
+      text,
+      inputTokens: payload.usage?.prompt_tokens ?? 0,
+      outputTokens: payload.usage?.completion_tokens ?? 0,
+      provider: "groq",
+      fallbackUsed: false,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateWithGemini(opts: {
   model?: string;
   systemInstruction?: string;
   userContent: string;
   maxOutputTokens?: number;
-}): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+}): Promise<GenerateResult> {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt <= MAX_TRANSIENT_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= MAX_GEMINI_TRANSIENT_RETRIES; attempt += 1) {
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(
-        () => reject(new Error(`Gemini generate() timed out after ${GENERATE_TIMEOUT_MS / 1000}s`)),
-        GENERATE_TIMEOUT_MS,
+        () => reject(new Error(`Gemini generate() timed out after ${GEMINI_GENERATE_TIMEOUT_MS / 1000}s`)),
+        GEMINI_GENERATE_TIMEOUT_MS,
       ),
     );
 
@@ -65,10 +129,12 @@ export async function generate(opts: {
         text: response.text ?? "",
         inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
         outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+        provider: "gemini",
+        fallbackUsed: true,
       };
     } catch (error) {
       lastError = error;
-      if (!isTransientGeminiError(error) || attempt >= MAX_TRANSIENT_RETRIES) {
+      if (!isTransientGeminiError(error) || attempt >= MAX_GEMINI_TRANSIENT_RETRIES) {
         throw error;
       }
 
@@ -78,4 +144,32 @@ export async function generate(opts: {
   }
 
   throw lastError instanceof Error ? lastError : new Error("Gemini request failed");
+}
+
+/**
+ * Unified AI generation entry point.
+ *
+ * Groq is attempted once as the primary provider. Any Groq failure (timeout,
+ * rate limit, invalid/empty response, network error, etc.) falls back to
+ * Gemini automatically. Callers keep using the same function and therefore do
+ * not need provider-specific logic.
+ */
+export async function generate(opts: {
+  model?: string;
+  systemInstruction?: string;
+  userContent: string;
+  maxOutputTokens?: number;
+}): Promise<GenerateResult> {
+  if (groqApiKey) {
+    try {
+      return await generateWithGroq(opts);
+    } catch (error) {
+      // Do not surface Groq failures to users; Gemini is the resilience path.
+      console.warn("Groq primary generation failed; falling back to Gemini", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return generateWithGemini(opts);
 }
