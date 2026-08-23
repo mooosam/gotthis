@@ -39,13 +39,13 @@ export async function determineIntent(
   const trimmed = message.trim();
 
   // Prompt injection is a policy decision, not an AI decision. Never send an
-  // obvious injection to Gemini and ask the model whether it is safe.
+  // obvious injection to an external model and ask the model whether it is safe.
   if (isPromptInjection(trimmed)) {
     return { intent: "off_topic", confidence: 1, inputTokens: 0, outputTokens: 0 };
   }
 
   try {
-    const { text, inputTokens, outputTokens } = await generate({
+    const { text, inputTokens, outputTokens, provider, fallbackUsed } = await generate({
       model: GEMINI_FAST,
       systemInstruction: `You are the GotThis intent engine. Your only job is to identify what a user is trying to do inside a goal-coaching application.
 
@@ -86,10 +86,19 @@ Confidence must be a number between 0 and 1. Do not include markdown or explanat
       ? Math.min(1, Math.max(0, parsed.confidence))
       : 0.5;
 
-    logger.info({ event: "intent_engine", path: "gemini", intent, confidence, inputTokens, outputTokens }, "AI intent determined");
+    logger.info({
+      event: "intent_engine",
+      path: provider,
+      provider,
+      fallbackUsed,
+      intent,
+      confidence,
+      inputTokens,
+      outputTokens,
+    }, "AI intent determined");
     return { intent, confidence, inputTokens, outputTokens };
   } catch (error) {
-    logger.warn({ err: error, event: "intent_engine_fallback" }, "Gemini intent engine failed; using minimal local fallback");
+    logger.warn({ err: error, event: "intent_engine_fallback" }, "AI intent engine failed; using minimal local fallback");
     return {
       intent: fallbackIntent(trimmed),
       confidence: 0.25,
