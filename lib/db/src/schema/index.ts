@@ -6,6 +6,7 @@ export * from "./daily-logs";
 export * from "./memory-summaries";
 export * from "./magic-links";
 export * from "./short-auth-links";
+export * from "./pending-whatsapp-claims";
 export * from "./activity-events";
 export * from "./achievements";
 export * from "./usage-tracking";
