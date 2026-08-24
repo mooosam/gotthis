@@ -38,26 +38,38 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 function stripBase(path: string): string { return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || "/" : path; }
 if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
 
-function safeSignInRedirect(): string {
+function safeAuthRedirect(fallback: string): string {
   const redirect = new URLSearchParams(window.location.search).get("redirect");
-  if (!redirect || !redirect.startsWith("/") || redirect.startsWith("//")) return "/dashboard";
+  if (!redirect || !redirect.startsWith("/") || redirect.startsWith("//")) return fallback;
   return redirect;
 }
 
 function SignInPage() {
-  const redirect = safeSignInRedirect();
+  const redirect = safeAuthRedirect("/dashboard");
   return (
     <div className="flex justify-center mt-8">
       <SignIn
         routing="path"
         path={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up`}
+        signUpUrl={`${basePath}/sign-up?redirect=${encodeURIComponent(redirect)}`}
         fallbackRedirectUrl={`${basePath}${redirect}`}
       />
     </div>
   );
 }
-function SignUpPage() { return <div className="flex justify-center mt-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/onboarding`} /></div>; }
+function SignUpPage() {
+  const redirect = safeAuthRedirect("/onboarding");
+  return (
+    <div className="flex justify-center mt-8">
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in?redirect=${encodeURIComponent(redirect)}`}
+        fallbackRedirectUrl={`${basePath}${redirect}`}
+      />
+    </div>
+  );
+}
 function ClerkAuthSetup() { const { getToken } = useAuth(); useEffect(() => { const getter = () => getToken(); setAuthTokenGetter(getter); setTokenGetter(getter); return () => { setAuthTokenGetter(null); setTokenGetter(null); }; }, [getToken]); return null; }
 function ClerkQueryClientCacheInvalidator() { const { addListener } = useClerk(); const queryClient = useQueryClient(); const prevUserIdRef = useRef<string | null | undefined>(undefined); useEffect(() => { const unsubscribe = addListener(({ user }) => { const userId = user?.id ?? null; if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId) queryClient.clear(); prevUserIdRef.current = userId; }); return unsubscribe; }, [addListener, queryClient]); return null; }
 function HomePage() { const { isSignedIn, isLoaded } = useUser(); if (isLoaded && isSignedIn) return <Redirect to="/dashboard" />; return <LandingPage />; }
