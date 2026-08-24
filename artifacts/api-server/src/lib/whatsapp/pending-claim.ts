@@ -30,6 +30,15 @@ export async function createPendingWhatsAppClaim(phone: string): Promise<string>
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const code = generateCode();
+
+      // /go/:code is shared with existing-account links. Keep the two code
+      // namespaces collision-free even though the probability is already tiny.
+      const [accountCodeRows] = await connection.execute(
+        "SELECT id FROM short_auth_links WHERE code = ? LIMIT 1",
+        [code],
+      );
+      if ((accountCodeRows as Array<{ id: string }>).length > 0) continue;
+
       const id = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + CLAIM_TTL_MS);
       try {
