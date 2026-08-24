@@ -5,6 +5,7 @@ import { hashPhone } from "../phone.js";
 import { processMessage } from "../ai/processor.js";
 import { getBaseUrl } from "./magic-link.js";
 import { createAuthenticatedShortLink } from "./auth-link.js";
+import { createPendingWhatsAppClaim } from "./pending-claim.js";
 import { checkBudgetForUser } from "../ai/usage.js";
 import { recordInboundEngagement } from "../ai/engagement.js";
 import { logger } from "../logger.js";
@@ -88,7 +89,19 @@ export async function sendToJid(to: string, text: string): Promise<void> { await
 
 async function handleIncomingMessage(phone: string, text: string): Promise<void> {
   const user = await findUserByPhone(phone);
-  if (!user) return;
+  if (!user) {
+    try {
+      const claimUrl = await createPendingWhatsAppClaim(phone);
+      await sendTracked(
+        phone,
+        `Welcome to GotThis 👋\n\nThis WhatsApp number isn't connected to an account yet. Create your free account here and we'll connect this number automatically:\n\n${claimUrl}\n\nAfter signup, come back here and message me again.`,
+      );
+    } catch (claimErr) {
+      logger.error({ err: claimErr, phone: phone.slice(-4) + "****" }, "Failed to create pending WhatsApp claim");
+      await sendTracked(phone, `Welcome to GotThis 👋\n\nCreate your free account at ${getBaseUrl()}/sign-up, then come back here and message me again.`);
+    }
+    return;
+  }
 
   const command = text.trim().toLowerCase();
   if (command === "dashboard" || command === "dash") {
