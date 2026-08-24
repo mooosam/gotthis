@@ -1,5 +1,4 @@
 import { Router, type IRouter, type Request } from "express";
-import { clerkClient } from "@clerk/express";
 import { pool } from "@workspace/db";
 import { normalizeAuthDestination } from "../lib/whatsapp/auth-link.js";
 import { logger } from "../lib/logger.js";
@@ -90,13 +89,20 @@ router.get("/auth-links/:code/status", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/auth-links/:code/redeem", async (req, res): Promise<void> => {
+/**
+ * Existing-account links no longer mint a Clerk sign-in token. The user first
+ * authenticates normally through Clerk, then this endpoint verifies that the
+ * authenticated account actually owns the short link before returning its
+ * destination.
+ */
+router.post("/auth-links/:code/redeem", requireAuth, async (req, res): Promise<void> => {
   const code = String(req.params.code ?? "");
   if (!CODE_RE.test(code)) {
     res.status(404).json({ error: "Link not found" });
     return;
   }
 
+  const userId = (req as Request & { userId: string }).userId;
   const connection = await pool.getConnection();
   try {
     const [rows] = await connection.execute(
@@ -113,12 +119,14 @@ router.post("/auth-links/:code/redeem", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Link not found" });
       return;
     }
-
+    if (link.user_id !== userId) {
+      res.status(403).json({ error: "This link belongs to a different GotThis account." });
+      return;
+    }
     if (link.used_at || new Date(link.expires_at).getTime() <= Date.now()) {
       res.status(410).json({ error: "This link has expired or already been used" });
       return;
     }
-
     if (Boolean(link.is_suspended)) {
       res.status(403).json({ error: "Account unavailable" });
       return;
@@ -131,28 +139,24 @@ router.post("/auth-links/:code/redeem", async (req, res): Promise<void> => {
       return;
     }
 
-    const signInToken = await clerkClient.signInTokens.createSignInToken({
-      userId: link.user_id,
-      expiresInSeconds: 60,
-    });
-
     res.setHeader("Cache-Control", "no-store");
-    res.json({ ticket: signInToken.token, destination });
+    res.json({ destination });
   } catch (error) {
-    logger.error({ err: error }, "Failed to redeem short authenticated link");
+    logger.error({ err: error, userId }, "Failed to redeem short authenticated link");
     res.status(500).json({ error: "Could not open this link. Please request a new one from WhatsApp." });
   } finally {
     connection.release();
   }
 });
 
-router.post("/auth-links/:code/consume", async (req, res): Promise<void> => {
+router.post("/auth-links/:code/consume", requireAuth, async (req, res): Promise<void> => {
   const code = String(req.params.code ?? "");
   if (!CODE_RE.test(code)) {
     res.status(404).json({ error: "Link not found" });
     return;
   }
 
+  const userId = (req as Request & { userId: string }).userId;
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -173,19 +177,21 @@ router.post("/auth-links/:code/consume", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Link not found" });
       return;
     }
-
+    if (link.user_id !== userId) {
+      await connection.rollback();
+      res.status(403).json({ error: "This link belongs to a different GotThis account." });
+      return;
+    }
     if (link.used_at) {
       await connection.rollback();
       res.status(410).json({ error: "This link has already been used" });
       return;
     }
-
     if (new Date(link.expires_at).getTime() <= Date.now()) {
       await connection.rollback();
       res.status(410).json({ error: "This link has expired" });
       return;
     }
-
     if (Boolean(link.is_suspended)) {
       await connection.rollback();
       res.status(403).json({ error: "Account unavailable" });
@@ -202,7 +208,7 @@ router.post("/auth-links/:code/consume", async (req, res): Promise<void> => {
     res.json({ ok: true });
   } catch (error) {
     try { await connection.rollback(); } catch { /* preserve original error */ }
-    logger.error({ err: error }, "Failed to consume short authenticated link");
+    logger.error({ err: error, userId }, "Failed to consume short authenticated link");
     res.status(500).json({ error: "Could not finish opening this link." });
   } finally {
     connection.release();
