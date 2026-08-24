@@ -3,30 +3,70 @@ import { useUser } from "@clerk/react";
 import { useLocation } from "wouter";
 import { apiFetch } from "@/lib/api";
 
+type LinkKind = "account" | "claim";
+
 export default function WhatsAppAuthPage({ code }: { code: string }) {
   const { isLoaded, isSignedIn } = useUser();
   const [, setLocation] = useLocation();
   const started = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState("Checking your secure link…");
 
   useEffect(() => {
     if (!isLoaded || started.current) return;
-
-    // WhatsApp often opens links in a browser that has no existing GotThis
-    // session. In that case, use the normal Clerk sign-in flow instead of trying
-    // to manufacture a session from a one-time ticket. After sign-in, Clerk sends
-    // the user back to this short-link route and we finish opening the dashboard.
-    if (!isSignedIn) {
-      started.current = true;
-      const returnTo = `/go/${encodeURIComponent(code)}`;
-      setLocation(`/sign-in?redirect=${encodeURIComponent(returnTo)}`);
-      return;
-    }
-
     started.current = true;
+
+    const returnTo = `/go/${encodeURIComponent(code)}`;
+
+    const navigate = (destination: string) => {
+      if (destination.startsWith("http://") || destination.startsWith("https://")) {
+        window.location.href = destination;
+      } else {
+        setLocation(destination);
+      }
+    };
 
     const openLink = async () => {
       try {
+        const statusResponse = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/status`);
+        const statusPayload = (await statusResponse.json().catch(() => null)) as
+          | { kind?: LinkKind; error?: string }
+          | null;
+
+        if (!statusResponse.ok || !statusPayload?.kind) {
+          throw new Error(statusPayload?.error ?? "This link is no longer available.");
+        }
+
+        if (!isSignedIn) {
+          setStatusText(
+            statusPayload.kind === "claim"
+              ? "Taking you to create your GotThis account…"
+              : "Taking you to sign in…",
+          );
+          const authPath = statusPayload.kind === "claim" ? "/sign-up" : "/sign-in";
+          setLocation(`${authPath}?redirect=${encodeURIComponent(returnTo)}`);
+          return;
+        }
+
+        if (statusPayload.kind === "claim") {
+          setStatusText("Connecting your WhatsApp number to your account…");
+          const claimResponse = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/claim`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          const claimPayload = (await claimResponse.json().catch(() => null)) as
+            | { destination?: string; error?: string }
+            | null;
+
+          if (!claimResponse.ok || !claimPayload?.destination) {
+            throw new Error(claimPayload?.error ?? "Could not connect this WhatsApp number.");
+          }
+
+          navigate(claimPayload.destination);
+          return;
+        }
+
+        setStatusText("Opening your GotThis dashboard…");
         const response = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/redeem`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -40,9 +80,6 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
           throw new Error(payload?.error ?? "This link is no longer available.");
         }
 
-        // The browser is now authenticated through the normal GotThis sign-in
-        // flow, so no Clerk ticket/finalize step is required. Consume the short
-        // link only immediately before navigating to its validated destination.
         const consumeResponse = await apiFetch(`/api/auth-links/${encodeURIComponent(code)}/consume`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -55,11 +92,7 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
           throw new Error(consumePayload?.error ?? "Could not finish opening this link.");
         }
 
-        if (payload.destination.startsWith("http://") || payload.destination.startsWith("https://")) {
-          window.location.href = payload.destination;
-        } else {
-          setLocation(payload.destination);
-        }
+        navigate(payload.destination);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Could not open this link.");
       }
@@ -76,18 +109,14 @@ export default function WhatsAppAuthPage({ code }: { code: string }) {
             <h1 className="text-xl font-semibold text-[#111827]">This link can’t be opened</h1>
             <p className="mt-3 text-sm leading-6 text-[#6B7280]">{errorMessage}</p>
             <p className="mt-4 text-xs leading-5 text-[#9CA3AF]">
-              Go back to WhatsApp and ask GotThis for a new dashboard link.
+              Go back to WhatsApp and ask GotThis for a new link.
             </p>
           </>
         ) : (
           <>
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#E5E7EB] border-t-[#111827]" />
             <h1 className="mt-5 text-xl font-semibold text-[#111827]">Opening GotThis…</h1>
-            <p className="mt-2 text-sm text-[#6B7280]">
-              {isLoaded && !isSignedIn
-                ? "Taking you to sign in first."
-                : "Taking you to your dashboard."}
-            </p>
+            <p className="mt-2 text-sm text-[#6B7280]">{statusText}</p>
           </>
         )}
       </div>
