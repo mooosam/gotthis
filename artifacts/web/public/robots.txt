@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /activity
+Disallow: /achievements
+Disallow: /goals
+Disallow: /goal/
+Disallow: /review/
+Disallow: /account
+Disallow: /admin
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /onboarding
+Disallow: /go/
+Disallow: /share/
+Disallow: /achievement/
+
+Sitemap: https://gotthis.one/sitemap.xml
