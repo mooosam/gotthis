@@ -1,0 +1,37 @@
+name: Web CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify-web:
+    runs-on: ubuntu-latest
+    env:
+      PORT: "3000"
+      BASE_PATH: "/"
+      VITE_CLERK_PUBLISHABLE_KEY: "pk_test_Z290dGhpcy5vbmUk"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - name: Typecheck web
+        run: pnpm --filter @workspace/web run typecheck
+      - name: Build and prerender web
+        run: pnpm --filter @workspace/web run build
+      - name: Verify prerendered HTML
+        run: |
+          test -f artifacts/web/dist/public/questions/what-is-an-ai-accountability-partner/index.html
+          grep -q 'What Is an AI Accountability Partner?' artifacts/web/dist/public/questions/what-is-an-ai-accountability-partner/index.html
+          test -f artifacts/web/dist/public/guides/how-to-track-your-goals/index.html
+          test -f artifacts/web/dist/public/features/whatsapp-goal-tracker/index.html
+          test -f artifacts/web/dist/public/compare/best-accountability-apps/index.html
+          test -f artifacts/web/dist/public/tools/goal-progress-calculator/index.html
+          grep -q 'https://gotthis.one/questions/what-is-an-ai-accountability-partner' artifacts/web/dist/public/sitemap.xml
