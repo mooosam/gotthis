@@ -18,7 +18,9 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
   }, []);
 
   const isActive = (path: string) =>
-    location === path ? "pub-link pub-link-active" : "pub-link";
+    location === path || (path !== "/" && location.startsWith(`${path}/`))
+      ? "pub-link pub-link-active"
+      : "pub-link";
 
   return (
     <div className="pub">
@@ -29,6 +31,9 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
         </Link>
         <nav className="pub-nav-links">
           <Link href="/" className={isActive("/")}>Home</Link>
+          <Link href="/features" className={isActive("/features")}>Features</Link>
+          <Link href="/questions" className={isActive("/questions")}>Learn</Link>
+          <Link href="/tools" className={isActive("/tools")}>Tools</Link>
           <Link href="/pricing" className={isActive("/pricing")}>Pricing</Link>
           <Link href="/faq" className={isActive("/faq")}>FAQ</Link>
         </nav>
@@ -45,14 +50,16 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
           <div className="pub-foot-col">
             <span className="pub-foot-brand-name">GOTTHIS</span>
             <p className="pub-foot-brand-desc">
-              The most frictionless way to stay honest with yourself. Track your goals via WhatsApp — no new apps, no logins.
+              Track your goals through WhatsApp. Send an update, see your progress, and keep going.
             </p>
           </div>
           <div className="pub-foot-col">
-            <div className="pub-foot-col-title">Navigate</div>
-            <Link href="/">Home</Link>
-            <Link href="/pricing">Pricing</Link>
-            <Link href="/faq">FAQ</Link>
+            <div className="pub-foot-col-title">Explore</div>
+            <Link href="/features">Features</Link>
+            <Link href="/questions">Questions</Link>
+            <Link href="/guides">Guides</Link>
+            <Link href="/tools">Free Tools</Link>
+            <Link href="/compare">Comparisons</Link>
           </div>
           <div className="pub-foot-col">
             <div className="pub-foot-col-title">Legal</div>
@@ -62,6 +69,8 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
           </div>
           <div className="pub-foot-col">
             <div className="pub-foot-col-title">Company</div>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/faq">FAQ</Link>
             <Link href="/contact">Contact Us</Link>
             <Link href="/sign-in">Login</Link>
             <Link href="/sign-up">Get Started</Link>
@@ -69,7 +78,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
         </div>
         <div className="pub-foot-bottom">
           <div>© {new Date().getFullYear()} GotThis Ltd. All rights reserved.</div>
-          <div>Created for those who value the ritual.</div>
+          <div>Built to help you keep going.</div>
         </div>
       </footer>
     </div>
