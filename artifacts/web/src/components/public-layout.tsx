@@ -17,6 +17,22 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    if (location !== "/") return;
+    const eyebrow = document.querySelector<HTMLElement>(".pub-eyebrow");
+    if (eyebrow && eyebrow.textContent?.toLowerCase().includes("ritual")) {
+      Array.from(eyebrow.childNodes).forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+          node.textContent = node.textContent.replace(/rituals?/gi, "goals");
+        }
+      });
+    }
+    const cta = document.querySelector<HTMLElement>(".pub-cta-band h2");
+    if (cta && cta.textContent?.toLowerCase().includes("ritual")) {
+      cta.textContent = "Ready to start with GotThis?";
+    }
+  }, [location]);
+
   const isActive = (path: string) =>
     location === path || (path !== "/" && location.startsWith(`${path}/`))
       ? "pub-link pub-link-active"
