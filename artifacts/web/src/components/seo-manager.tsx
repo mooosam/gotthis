@@ -17,6 +17,11 @@ const PUBLIC_SEO: Record<string, SeoConfig> = {
   "/guides": { title: "Goal Tracking & Accountability Guides | GotThis", description: "Simple guides for tracking goals, staying consistent and keeping your goals in sight." },
   "/features": { title: "GotThis Features", description: "See how GotThis helps with goal tracking, check-ins and WhatsApp progress updates." },
   "/compare": { title: "Goal Tracking & Accountability Comparisons | GotThis", description: "Simple comparisons for goal tracking and accountability tools." },
+  "/tools": { title: "Free Goal Tools | GotThis", description: "Simple free tools to plan goals, check progress and make your next step clear." },
+  "/tools/goal-progress-calculator": { title: "Goal Progress Calculator | GotThis", description: "See what percent of your goal is complete with a simple free calculator." },
+  "/tools/goal-planner": { title: "Simple Goal Planner | GotThis", description: "Turn a big goal into one small next step with this free goal planner." },
+  "/tools/smart-goal-generator": { title: "SMART Goal Helper | GotThis", description: "Make a goal clear and easy to track with a simple free SMART goal helper." },
+  "/tools/accountability-check-in-generator": { title: "Accountability Check-In Generator | GotThis", description: "Make a short accountability check-in question for your goal." },
 };
 const PRIVATE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/dashboard", "/activity", "/achievements", "/goals", "/goal/", "/review/", "/account", "/admin", "/go/", "/share/", "/achievement/"];
 function upsertMeta(selector: string, attrs: Record<string, string>) { let el = document.head.querySelector<HTMLMetaElement>(selector); if (!el) { el = document.createElement("meta"); document.head.appendChild(el); } Object.entries(attrs).forEach(([k,v]) => el!.setAttribute(k,v)); }
