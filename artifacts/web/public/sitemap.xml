@@ -3,6 +3,14 @@
   <url><loc>https://gotthis.one/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
   <url><loc>https://gotthis.one/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://gotthis.one/faq</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://gotthis.one/questions</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://gotthis.one/questions/what-is-an-ai-accountability-partner</loc><lastmod>2026-08-30</lastmod><priority>0.8</priority></url>
+  <url><loc>https://gotthis.one/questions/how-to-stay-accountable-to-your-goals</loc><lastmod>2026-08-30</lastmod><priority>0.8</priority></url>
+  <url><loc>https://gotthis.one/questions/can-i-track-goals-through-whatsapp</loc><lastmod>2026-08-30</lastmod><priority>0.8</priority></url>
+  <url><loc>https://gotthis.one/guides</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://gotthis.one/guides/how-to-track-your-goals</loc><lastmod>2026-08-30</lastmod><priority>0.8</priority></url>
+  <url><loc>https://gotthis.one/features</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://gotthis.one/compare</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://gotthis.one/contact</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
   <url><loc>https://gotthis.one/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://gotthis.one/cookies</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
