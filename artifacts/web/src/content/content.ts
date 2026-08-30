@@ -1,94 +1,18 @@
 export type ContentKind = "question" | "guide" | "landing" | "comparison";
-
-export type ContentSection = {
-  heading: string;
-  paragraphs?: string[];
-  bullets?: string[];
-};
-
-export type ContentEntry = {
-  kind: ContentKind;
-  slug: string;
-  title: string;
-  description: string;
-  category: string;
-  shortAnswer?: string;
-  sections: ContentSection[];
-  related?: string[];
-  published: string;
-  updated?: string;
-};
+export type ContentSection = { heading: string; paragraphs?: string[]; bullets?: string[]; };
+export type ContentEntry = { kind: ContentKind; slug: string; title: string; description: string; category: string; shortAnswer?: string; sections: ContentSection[]; related?: string[]; published: string; updated?: string; };
 
 export const contentEntries: ContentEntry[] = [
-  {
-    kind: "question",
-    slug: "what-is-an-ai-accountability-partner",
-    title: "What Is an AI Accountability Partner?",
-    description: "Learn what an AI accountability partner is, how it works, and how regular check-ins can help you stay focused on your goals.",
-    category: "AI Accountability",
-    shortAnswer: "An AI accountability partner is a digital assistant that helps you follow through on goals by checking in, asking about progress, reminding you about commitments, and helping you decide what to do next. Unlike a passive tracker, it can make accountability part of an ongoing conversation.",
-    sections: [
-      { heading: "How does AI accountability work?", paragraphs: ["A useful accountability system starts with a clear goal and a repeatable check-in. You report what happened, identify what is blocking progress, and choose the next action instead of simply recording a streak."] },
-      { heading: "What should an AI accountability partner do?", bullets: ["Keep goals visible", "Prompt regular progress check-ins", "Help turn goals into concrete next actions", "Make missed progress easier to recover from", "Keep a useful history of progress"] },
-      { heading: "Where GotThis fits", paragraphs: ["GotThis brings goal tracking and accountability into WhatsApp so check-ins can happen in a conversation you already use instead of requiring another productivity dashboard to remember to open."] },
-    ],
-    related: ["how-to-stay-accountable-to-your-goals", "can-i-track-goals-through-whatsapp"],
-    published: "2026-08-30",
-  },
-  {
-    kind: "question",
-    slug: "how-to-stay-accountable-to-your-goals",
-    title: "How Do I Stay Accountable to My Goals?",
-    description: "A practical approach to staying accountable to your goals with clear commitments, regular check-ins and simple progress tracking.",
-    category: "Accountability",
-    shortAnswer: "Stay accountable by making your goal specific, choosing a measurable next action, setting a regular check-in, and recording whether you followed through. The most useful system makes missed commitments visible and helps you quickly choose the next action rather than abandoning the goal.",
-    sections: [
-      { heading: "Create a simple accountability loop", bullets: ["Define the outcome you want", "Choose the next measurable action", "Decide when you will check in", "Report what actually happened", "Adjust the next action when needed"] },
-      { heading: "Why consistency matters more than perfect streaks", paragraphs: ["Missing one action does not have to end a goal. A strong accountability process makes it easy to acknowledge a miss, understand why it happened, and resume with a realistic next step."] },
-    ],
-    related: ["what-is-an-ai-accountability-partner", "can-i-track-goals-through-whatsapp"],
-    published: "2026-08-30",
-  },
-  {
-    kind: "question",
-    slug: "can-i-track-goals-through-whatsapp",
-    title: "Can I Track My Goals Through WhatsApp?",
-    description: "Learn how WhatsApp can be used for goal check-ins, reminders, progress updates and accountability without another daily productivity app.",
-    category: "WhatsApp Goal Tracking",
-    shortAnswer: "Yes. You can track goals through WhatsApp by using regular check-ins, reminders and progress updates in a conversation. GotThis is designed around this approach, bringing goal tracking and accountability into WhatsApp so you can report progress without repeatedly opening a separate tracking app.",
-    sections: [
-      { heading: "How WhatsApp goal tracking works", bullets: ["Set a goal", "Define what progress looks like", "Choose a check-in rhythm", "Receive a prompt", "Report your progress", "Continue with the next action"] },
-      { heading: "Why use a conversation for goal tracking?", paragraphs: ["Traditional trackers depend on you remembering to visit them. Conversational tracking can move the check-in closer to where you already communicate, reducing the extra step between a reminder and a progress update."] },
-    ],
-    related: ["what-is-an-ai-accountability-partner", "how-to-stay-accountable-to-your-goals"],
-    published: "2026-08-30",
-  },
-  {
-    kind: "guide",
-    slug: "how-to-track-your-goals",
-    title: "How to Track Your Goals Without Making It Complicated",
-    description: "A practical guide to tracking goals with clear outcomes, measurable actions, useful check-ins and a simple review process.",
-    category: "Goal Tracking",
-    shortAnswer: "Effective goal tracking does not require a complicated dashboard. Define the outcome, identify the actions that move it forward, record progress consistently, and review often enough to change course when something is not working.",
-    sections: [
-      { heading: "Start with an outcome you can recognize", paragraphs: ["A goal becomes easier to track when you can clearly tell whether you are moving toward it. Replace vague intentions with an outcome and a timeframe that make progress observable."] },
-      { heading: "Track actions as well as outcomes", paragraphs: ["Long-term outcomes often move slowly. Tracking the actions you control gives you faster feedback and helps you distinguish a difficult goal from an inconsistent process."] },
-      { heading: "Use check-ins to decide what happens next", paragraphs: ["A check-in should do more than record a number. Use it to identify progress, blockers and the next concrete commitment. That turns tracking into an accountability loop."] },
-    ],
-    related: ["how-to-stay-accountable-to-your-goals", "can-i-track-goals-through-whatsapp"],
-    published: "2026-08-30",
-  },
+{kind:"question",slug:"what-is-an-ai-accountability-partner",title:"What Is an AI Accountability Partner?",description:"Learn what an AI accountability partner is, how it works, and how regular check-ins can help you stay focused on your goals.",category:"AI Accountability",shortAnswer:"An AI accountability partner is a digital assistant that helps you follow through on goals by checking in, asking about progress, reminding you about commitments, and helping you decide what to do next. Unlike a passive tracker, it can make accountability part of an ongoing conversation.",sections:[{heading:"How does AI accountability work?",paragraphs:["A useful accountability system starts with a clear goal and a repeatable check-in. You report what happened, identify what is blocking progress, and choose the next action instead of simply recording a streak."]},{heading:"What should an AI accountability partner do?",bullets:["Keep goals visible","Prompt regular progress check-ins","Help turn goals into concrete next actions","Make missed progress easier to recover from","Keep a useful history of progress"]},{heading:"Where GotThis fits",paragraphs:["GotThis brings goal tracking and accountability into WhatsApp so check-ins can happen in a conversation you already use instead of requiring another productivity dashboard to remember to open."]}],related:["how-to-stay-accountable-to-your-goals","can-i-track-goals-through-whatsapp"],published:"2026-08-30"},
+{kind:"question",slug:"how-to-stay-accountable-to-your-goals",title:"How Do I Stay Accountable to My Goals?",description:"A practical approach to staying accountable to your goals with clear commitments, regular check-ins and simple progress tracking.",category:"Accountability",shortAnswer:"Stay accountable by making your goal specific, choosing a measurable next action, setting a regular check-in, and recording whether you followed through. The most useful system makes missed commitments visible and helps you quickly choose the next action rather than abandoning the goal.",sections:[{heading:"Create a simple accountability loop",bullets:["Define the outcome you want","Choose the next measurable action","Decide when you will check in","Report what actually happened","Adjust the next action when needed"]},{heading:"Why consistency matters more than perfect streaks",paragraphs:["Missing one action does not have to end a goal. A strong accountability process makes it easy to acknowledge a miss, understand why it happened, and resume with a realistic next step."]}],related:["what-is-an-ai-accountability-partner","can-i-track-goals-through-whatsapp"],published:"2026-08-30"},
+{kind:"question",slug:"can-i-track-goals-through-whatsapp",title:"Can I Track My Goals Through WhatsApp?",description:"Learn how WhatsApp can be used for goal check-ins, reminders, progress updates and accountability without another daily productivity app.",category:"WhatsApp Goal Tracking",shortAnswer:"Yes. You can track goals through WhatsApp by using regular check-ins, reminders and progress updates in a conversation. GotThis is designed around this approach, bringing goal tracking and accountability into WhatsApp so you can report progress without repeatedly opening a separate tracking app.",sections:[{heading:"How WhatsApp goal tracking works",bullets:["Set a goal","Define what progress looks like","Choose a check-in rhythm","Receive a prompt","Report your progress","Continue with the next action"]},{heading:"Why use a conversation for goal tracking?",paragraphs:["Traditional trackers depend on you remembering to visit them. Conversational tracking can move the check-in closer to where you already communicate, reducing the extra step between a reminder and a progress update."]}],related:["what-is-an-ai-accountability-partner","how-to-stay-accountable-to-your-goals"],published:"2026-08-30"},
+{kind:"guide",slug:"how-to-track-your-goals",title:"How to Track Your Goals Without Making It Complicated",description:"A practical guide to tracking goals with clear outcomes, measurable actions, useful check-ins and a simple review process.",category:"Goal Tracking",shortAnswer:"Effective goal tracking does not require a complicated dashboard. Define the outcome, identify the actions that move it forward, record progress consistently, and review often enough to change course when something is not working.",sections:[{heading:"Start with an outcome you can recognize",paragraphs:["A goal becomes easier to track when you can clearly tell whether you are moving toward it. Replace vague intentions with an outcome and a timeframe that make progress observable."]},{heading:"Track actions as well as outcomes",paragraphs:["Long-term outcomes often move slowly. Tracking the actions you control gives you faster feedback and helps you distinguish a difficult goal from an inconsistent process."]},{heading:"Use check-ins to decide what happens next",paragraphs:["A check-in should do more than record a number. Use it to identify progress, blockers and the next concrete commitment. That turns tracking into an accountability loop."]}],related:["how-to-stay-accountable-to-your-goals","can-i-track-goals-through-whatsapp"],published:"2026-08-30"},
+{kind:"landing",slug:"whatsapp-goal-tracker",title:"WhatsApp Goal Tracker",description:"Track goals through WhatsApp with conversational progress updates, accountability check-ins and a dashboard that keeps your progress visible.",category:"WhatsApp Goal Tracking",shortAnswer:"GotThis is a WhatsApp-first goal tracker designed to reduce the friction of traditional productivity apps. Set a goal, report progress in normal conversation, and keep your activity connected to a dashboard for a clearer view of what is moving.",sections:[{heading:"What is a WhatsApp goal tracker?",paragraphs:["A WhatsApp goal tracker uses messaging as the place where you report progress and interact with your accountability system. Instead of relying on you to repeatedly open a separate app, the tracking workflow can fit into a conversation you already use."]},{heading:"How GotThis works through WhatsApp",bullets:["Create a measurable goal","Connect your WhatsApp conversation","Receive goal check-ins","Reply with progress in natural language","Review progress and active goals on your dashboard"]},{heading:"Why conversational goal tracking can reduce friction",paragraphs:["Goal systems often fail when recording progress becomes another chore. A conversational interface shortens the distance between doing the work and reporting it, while the dashboard preserves the structured view when you need it."]},{heading:"What can you track?",paragraphs:["Use GotThis for goals where progress can be described or measured consistently, including study, writing, learning, personal projects, routines and activity targets."]}],related:["can-i-track-goals-through-whatsapp","how-to-track-your-goals","ai-accountability-partner"],published:"2026-08-30"},
+{kind:"landing",slug:"ai-accountability-partner",title:"AI Accountability Partner",description:"Use AI-powered conversational check-ins to keep goals visible, report progress and turn missed commitments into useful next actions.",category:"AI Accountability",shortAnswer:"GotThis acts as an AI accountability partner by combining goals, conversational check-ins and progress reporting. The aim is to help you follow through, not simply send more notifications.",sections:[{heading:"Accountability is more than a reminder",paragraphs:["A reminder can tell you that a task exists. Accountability adds a response: what did you complete, what got in the way, and what are you committing to next?"]},{heading:"How an AI accountability loop works",bullets:["Define the goal and measurable progress","Bring the commitment back into view with check-ins","Report what actually happened","Keep progress history visible","Continue with the next realistic action"]},{heading:"Why use AI for accountability?",paragraphs:["AI can make natural-language updates easier to interpret and organize. That creates room for a more conversational experience than a traditional checklist while preserving useful progress data."]},{heading:"GotThis brings the loop to WhatsApp",paragraphs:["GotThis is designed so the accountability conversation can happen through WhatsApp, reducing the need to remember another app before you can report progress."]}],related:["what-is-an-ai-accountability-partner","how-to-stay-accountable-to-your-goals","whatsapp-goal-tracker"],published:"2026-08-30"},
+{kind:"landing",slug:"accountability-app",title:"Accountability App for Goals",description:"A goal accountability app built around check-ins, progress reporting and follow-through instead of passive lists and easy-to-ignore reminders.",category:"Accountability",shortAnswer:"GotThis is an accountability app for people who want their goals to come back into the conversation. It combines measurable goals, regular check-ins, conversational progress updates and a dashboard so commitments are harder to quietly forget.",sections:[{heading:"What should an accountability app actually do?",paragraphs:["A useful accountability app should help you define what you committed to, ask what happened, preserve the result and make the next commitment clear. Tracking without follow-up can show history but may not change behavior."]},{heading:"From passive tracking to an accountability loop",bullets:["Keep the goal visible","Prompt a check-in","Record progress or blockers","Review the signal","Choose the next action"]},{heading:"Designed for recovery, not perfect streaks",paragraphs:["Missing a commitment is information. A practical system helps you acknowledge it and continue rather than treating one missed day as the end of the goal."]}],related:["how-to-stay-accountable-to-your-goals","ai-accountability-partner","goal-tracking-app"],published:"2026-08-30"},
+{kind:"landing",slug:"goal-tracking-app",title:"Goal Tracking App That Keeps Progress in the Conversation",description:"Track measurable goals, report progress naturally and review momentum without turning goal tracking into another complicated productivity system.",category:"Goal Tracking",shortAnswer:"GotThis is a goal tracking app built for low-friction progress reporting. You define measurable goals, send updates through WhatsApp and use the dashboard to see progress, activity and the goals that need attention.",sections:[{heading:"What makes goal tracking useful?",paragraphs:["Tracking should tell you whether your actions are moving you toward the outcome and help you decide what to do next. More fields and charts do not automatically create a better system."]},{heading:"A simpler tracking workflow",bullets:["Define the outcome","Identify measurable progress","Report updates consistently","Review momentum","Adjust the next action"]},{heading:"Why GotThis uses messaging",paragraphs:["Traditional goal apps depend on a habit of opening the tracker. GotThis moves progress reporting into WhatsApp so logging can happen closer to the moment the work happens."]}],related:["how-to-track-your-goals","whatsapp-goal-tracker","accountability-app"],published:"2026-08-30"},
+{kind:"landing",slug:"goal-reminder-app",title:"Goal Reminder App With Accountability Check-Ins",description:"Go beyond easy-to-ignore goal reminders with conversational check-ins that ask about progress and keep commitments connected to your goals.",category:"Goal Reminders",shortAnswer:"GotThis goes beyond a basic goal reminder by pairing prompts with an accountability response. Instead of only telling you a goal exists, the system is designed to bring the commitment back into view and make it easy to report what happened.",sections:[{heading:"Why reminders become background noise",paragraphs:["Repeated notifications can lose their meaning when there is no action attached to them. The reminder appears, gets dismissed and the goal remains unchanged."]},{heading:"Turn a reminder into a check-in",bullets:["Reference the goal","Ask for the result","Record progress or a blocker","Reconnect the update to the goal","Decide what happens next"]},{heading:"Use WhatsApp instead of another notification inbox",paragraphs:["GotThis brings the accountability interaction into WhatsApp, where a prompt can become a two-way progress conversation instead of another alert to clear."]}],related:["accountability-app","ai-accountability-partner","whatsapp-goal-tracker"],published:"2026-08-30"}
 ];
-
-export function getContent(kind: ContentKind, slug: string) {
-  return contentEntries.find((entry) => entry.kind === kind && entry.slug === slug);
-}
-
-export function getContentByKind(kind: ContentKind) {
-  return contentEntries.filter((entry) => entry.kind === kind);
-}
-
-export function contentPath(entry: ContentEntry) {
-  const roots: Record<ContentKind, string> = { question: "/questions", guide: "/guides", landing: "/features", comparison: "/compare" };
-  return `${roots[entry.kind]}/${entry.slug}`;
-}
+export function getContent(kind: ContentKind, slug: string) { return contentEntries.find((entry) => entry.kind === kind && entry.slug === slug); }
+export function getContentByKind(kind: ContentKind) { return contentEntries.filter((entry) => entry.kind === kind); }
+export function contentPath(entry: ContentEntry) { const roots: Record<ContentKind,string>={question:"/questions",guide:"/guides",landing:"/features",comparison:"/compare"}; return `${roots[entry.kind]}/${entry.slug}`; }
