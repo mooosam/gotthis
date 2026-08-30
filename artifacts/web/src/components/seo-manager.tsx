@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { contentEntries, contentPath } from "@/content/content";
+import { contentEntries, contentPath } from "@/content/all-content";
 
 const SITE_URL = "https://gotthis.one";
 const DEFAULT_IMAGE = `${SITE_URL}/opengraph.jpg`;
@@ -13,10 +13,10 @@ const PUBLIC_SEO: Record<string, SeoConfig> = {
   "/terms": { title: "Terms of Service | GotThis", description: "Read the GotThis terms of service." },
   "/cookies": { title: "Cookie Policy | GotThis", description: "Read the GotThis cookie policy." },
   "/data-policy": { title: "Data & Privacy Policy | GotThis", description: "Learn how GotThis handles and protects account, goal and messaging data." },
-  "/questions": { title: "Goal & Accountability Questions | GotThis", description: "Clear answers about goal tracking, accountability, AI accountability, reminders and WhatsApp productivity." },
-  "/guides": { title: "Goal Tracking & Accountability Guides | GotThis", description: "Practical guides for tracking goals, staying consistent and building a useful accountability system." },
-  "/features": { title: "GotThis Features", description: "Explore GotThis goal tracking, accountability and WhatsApp productivity features." },
-  "/compare": { title: "Goal Tracking & Accountability Comparisons | GotThis", description: "Compare goal tracking and accountability approaches and tools." },
+  "/questions": { title: "Goal & Accountability Questions | GotThis", description: "Simple answers about goal tracking, accountability, AI, reminders and WhatsApp." },
+  "/guides": { title: "Goal Tracking & Accountability Guides | GotThis", description: "Simple guides for tracking goals, staying consistent and keeping your goals in sight." },
+  "/features": { title: "GotThis Features", description: "See how GotThis helps with goal tracking, check-ins and WhatsApp progress updates." },
+  "/compare": { title: "Goal Tracking & Accountability Comparisons | GotThis", description: "Simple comparisons for goal tracking and accountability tools." },
 };
 const PRIVATE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/dashboard", "/activity", "/achievements", "/goals", "/goal/", "/review/", "/account", "/admin", "/go/", "/share/", "/achievement/"];
 function upsertMeta(selector: string, attrs: Record<string, string>) { let el = document.head.querySelector<HTMLMetaElement>(selector); if (!el) { el = document.createElement("meta"); document.head.appendChild(el); } Object.entries(attrs).forEach(([k,v]) => el!.setAttribute(k,v)); }
@@ -38,7 +38,7 @@ export default function SeoManager() {
     upsertMeta('meta[name="description"]',{name:"description",content:description}); upsertMeta('meta[name="robots"]',{name:"robots",content:index?"index, follow":"noindex, nofollow"}); upsertMeta('meta[name="googlebot"]',{name:"googlebot",content:index?"index, follow":"noindex, nofollow"}); upsertMeta('meta[property="og:title"]',{property:"og:title",content:title}); upsertMeta('meta[property="og:description"]',{property:"og:description",content:description}); upsertMeta('meta[property="og:type"]',{property:"og:type",content:config?.type??"website"}); upsertMeta('meta[property="og:url"]',{property:"og:url",content:canonical}); upsertMeta('meta[property="og:image"]',{property:"og:image",content:DEFAULT_IMAGE}); upsertMeta('meta[property="og:site_name"]',{property:"og:site_name",content:"GotThis"}); upsertMeta('meta[name="twitter:card"]',{name:"twitter:card",content:"summary_large_image"}); upsertMeta('meta[name="twitter:title"]',{name:"twitter:title",content:title}); upsertMeta('meta[name="twitter:description"]',{name:"twitter:description",content:description}); upsertMeta('meta[name="twitter:image"]',{name:"twitter:image",content:DEFAULT_IMAGE}); upsertLink("canonical",canonical);
     setJsonLd("gotthis-website-schema", index && !entry ? {"@context":"https://schema.org","@type":"WebSite",name:"GotThis",url:SITE_URL,description:"AI-powered goal tracking and accountability through WhatsApp."}:null);
     setJsonLd("gotthis-organization-schema", index ? {"@context":"https://schema.org","@type":"Organization",name:"GotThis",url:SITE_URL,logo:`${SITE_URL}/favicon.svg`}:null);
-    setJsonLd("gotthis-content-schema", entry ? {"@context":"https://schema.org","@type": entry.kind === "question" ? "Article" : "Article",headline:entry.title,description:entry.description,datePublished:entry.published,dateModified:entry.updated??entry.published,mainEntityOfPage:canonical,publisher:{"@type":"Organization",name:"GotThis",url:SITE_URL}}:null);
+    setJsonLd("gotthis-content-schema", entry ? {"@context":"https://schema.org","@type":"Article",headline:entry.title,description:entry.description,datePublished:entry.published,dateModified:entry.updated??entry.published,mainEntityOfPage:canonical,publisher:{"@type":"Organization",name:"GotThis",url:SITE_URL}}:null);
     setJsonLd("gotthis-breadcrumb-schema", entry ? {"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:[{"@type":"ListItem",position:1,name:"Home",item:SITE_URL},{"@type":"ListItem",position:2,name:entry.kind === "question"?"Questions":entry.kind === "guide"?"Guides":entry.kind === "landing"?"Features":"Comparisons",item:`${SITE_URL}/${entry.kind === "question"?"questions":entry.kind === "guide"?"guides":entry.kind === "landing"?"features":"compare"}`},{"@type":"ListItem",position:3,name:entry.title,item:canonical}]}:null);
   }, [location]);
   return null;
