@@ -1,75 +1,40 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import fs from "node:fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { contentEntries, contentPath, type ContentEntry, type ContentKind } from "./src/content/content";
 
+const SITE_URL = "https://gotthis.one";
+const outDir = path.resolve(import.meta.dirname, "dist/public");
 const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
+if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");
 const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
+if (Number.isNaN(port) || port <= 0) throw new Error(`Invalid PORT value: "${rawPort}"`);
 const basePath = process.env.BASE_PATH;
+if (!basePath) throw new Error("BASE_PATH environment variable is required but was not provided.");
 
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+const hubCopy: Record<string, { title: string; description: string; heading: string; intro: string; kind: ContentKind }> = {
+  "/questions": { title: "Goal & Accountability Questions | GotThis", description: "Simple answers about goal tracking, accountability, AI, reminders and WhatsApp.", heading: "Goal and accountability questions", intro: "Simple answers to common questions about goals, check-ins, AI and WhatsApp.", kind: "question" },
+  "/guides": { title: "Goal Tracking & Accountability Guides | GotThis", description: "Simple guides for tracking goals, staying consistent and keeping your goals in sight.", heading: "Goal tracking and accountability guides", intro: "Simple steps you can use to work on your goals.", kind: "guide" },
+  "/features": { title: "GotThis Features", description: "See how GotThis helps with goal tracking, check-ins and WhatsApp progress updates.", heading: "Ways GotThis can help", intro: "Track goals, get check-ins and send progress updates through WhatsApp.", kind: "landing" },
+  "/compare": { title: "Goal Tracking & Accountability Comparisons | GotThis", description: "Simple comparisons for goal tracking and accountability tools.", heading: "Goal tracking and accountability comparisons", intro: "Compare different ways to track goals and stay accountable.", kind: "comparison" },
+};
+const toolPages = [
+  { path: "/tools", title: "Free Goal Tools | GotThis", description: "Simple free tools to plan goals, check progress and make your next step clear.", heading: "Simple tools for your goals", intro: "Plan a goal. Check your progress. Make your next step clear." },
+  { path: "/tools/goal-progress-calculator", title: "Goal Progress Calculator | GotThis", description: "See what percent of your goal is complete with a simple free calculator.", heading: "Goal progress calculator", intro: "Enter your goal and what you have done so far. Example: 25 pages out of 100 pages is 25% done." },
+  { path: "/tools/goal-planner", title: "Simple Goal Planner | GotThis", description: "Turn a big goal into one small next step with this free goal planner.", heading: "Goal planner", intro: "Write the big goal. Then make the next step small. Example: Read 100 pages this month. Next step: Read 10 pages today." },
+  { path: "/tools/smart-goal-generator", title: "SMART Goal Helper | GotThis", description: "Make a goal clear and easy to track with a simple free SMART goal helper.", heading: "SMART goal helper", intro: "Make your goal clear. You should know what to do and when to do it." },
+  { path: "/tools/accountability-check-in-generator", title: "Accountability Check-In Generator | GotThis", description: "Make a short accountability check-in question for your goal.", heading: "Accountability check-in", intro: "Make a short question that asks about your goal. Example: Did you read 10 pages today?" },
+];
+const staticPublic = ["/", "/pricing", "/faq", "/contact", "/terms", "/cookies", "/data-policy"];
+function esc(value: string) { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function entryBody(entry: ContentEntry) { const sections = entry.sections.map((section) => `<section><h2>${esc(section.heading)}</h2>${(section.paragraphs ?? []).map((p) => `<p>${esc(p)}</p>`).join("")}${section.bullets?.length ? `<ul>${section.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}</section>`).join(""); return `<main data-prerendered="true"><article><p>${esc(entry.category)}</p><h1>${esc(entry.title)}</h1>${entry.shortAnswer ? `<p>${esc(entry.shortAnswer)}</p>` : ""}${sections}</article></main>`; }
+function hubBody(pathname: string) { const hub = hubCopy[pathname]; const links = contentEntries.filter((e) => e.kind === hub.kind).map((e) => `<li><a href="${contentPath(e)}">${esc(e.title)}</a><p>${esc(e.description)}</p></li>`).join(""); return `<main data-prerendered="true"><h1>${esc(hub.heading)}</h1><p>${esc(hub.intro)}</p><ul>${links}</ul></main>`; }
+function toolBody(tool: (typeof toolPages)[number]) { return `<main data-prerendered="true"><h1>${esc(tool.heading)}</h1><p>${esc(tool.intro)}</p>${tool.path === "/tools" ? `<ul>${toolPages.slice(1).map((t) => `<li><a href="${t.path}">${esc(t.heading)}</a></li>`).join("")}</ul>` : ""}</main>`; }
+function setHead(template: string, pathname: string, title: string, description: string, article = false, entry?: ContentEntry) { const canonical = `${SITE_URL}${pathname}`; let html = template.replace(/<title>.*?<\/title>/s, `<title>${esc(title)}</title>`).replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(description)}" />`).replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${canonical}" />`).replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`).replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(description)}" />`).replace(/<meta property="og:type" content="[^"]*"\s*\/>/, `<meta property="og:type" content="${article ? "article" : "website"}" />`).replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${canonical}" />`).replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`).replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(description)}" />`); if (entry) { const schema = { "@context": "https://schema.org", "@type": "Article", headline: entry.title, description: entry.description, datePublished: entry.published, dateModified: entry.updated ?? entry.published, mainEntityOfPage: canonical, publisher: { "@type": "Organization", name: "GotThis", url: SITE_URL } }; html = html.replace("</head>", `<script type="application/ld+json">${JSON.stringify(schema)}</script></head>`); } return html; }
+function writeRoute(template: string, pathname: string, title: string, description: string, body: string, article = false, entry?: ContentEntry) { const dir = path.join(outDir, pathname.replace(/^\//, "")); fs.mkdirSync(dir, { recursive: true }); const html = setHead(template, pathname, title, description, article, entry).replace('<div id="root"></div>', `<div id="root">${body}</div>`); fs.writeFileSync(path.join(dir, "index.html"), html); }
+function seoOutputPlugin(): Plugin { return { name: "gotthis-seo-output", apply: "build", closeBundle() { const template = fs.readFileSync(path.join(outDir, "index.html"), "utf8"); for (const entry of contentEntries) writeRoute(template, contentPath(entry), `${entry.title} | GotThis`, entry.description, entryBody(entry), true, entry); for (const pathname of Object.keys(hubCopy)) { const hub = hubCopy[pathname]; writeRoute(template, pathname, hub.title, hub.description, hubBody(pathname)); } for (const tool of toolPages) writeRoute(template, tool.path, tool.title, tool.description, toolBody(tool)); const sitemapPaths = [...staticPublic.map((pathname) => ({ pathname })), ...Object.keys(hubCopy).map((pathname) => ({ pathname })), ...contentEntries.map((entry) => ({ pathname: contentPath(entry), lastmod: entry.updated ?? entry.published })), ...toolPages.map((tool) => ({ pathname: tool.path }))]; const unique = Array.from(new Map(sitemapPaths.map((item) => [item.pathname, item])).values()); const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${unique.map((item) => `  <url><loc>${SITE_URL}${item.pathname === "/" ? "/" : item.pathname}</loc>${item.lastmod ? `<lastmod>${item.lastmod}</lastmod>` : ""}</url>`).join("\n")}\n</urlset>\n`; fs.writeFileSync(path.join(outDir, "sitemap.xml"), sitemap); } }; }
 
-export default defineConfig({
-  base: basePath,
-  plugins: [
-    react(),
-    tailwindcss(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "src"),
-      "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
-    },
-    dedupe: ["react", "react-dom"],
-  },
-  root: path.resolve(import.meta.dirname),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-  },
-  server: {
-    port,
-    host: "0.0.0.0",
-    allowedHosts: true,
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
-    },
-  },
-  preview: {
-    port,
-    host: "0.0.0.0",
-    allowedHosts: true,
-  },
-});
+export default defineConfig({ base: basePath, plugins: [react(), tailwindcss(), runtimeErrorOverlay(), seoOutputPlugin(), ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined ? [await import("@replit/vite-plugin-cartographer").then((m) => m.cartographer({ root: path.resolve(import.meta.dirname, "..") })), await import("@replit/vite-plugin-dev-banner").then((m) => m.devBanner())] : [])], resolve: { alias: { "@": path.resolve(import.meta.dirname, "src"), "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets") }, dedupe: ["react", "react-dom"] }, root: path.resolve(import.meta.dirname), build: { outDir, emptyOutDir: true }, server: { port, host: "0.0.0.0", allowedHosts: true, fs: { strict: true, deny: ["**/.*"] } }, preview: { port, host: "0.0.0.0", allowedHosts: true } });
