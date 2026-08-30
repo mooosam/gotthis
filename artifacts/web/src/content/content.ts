@@ -1,94 +1,17 @@
 export type ContentKind = "question" | "guide" | "landing" | "comparison";
-
-export type ContentSection = {
-  heading: string;
-  paragraphs?: string[];
-  bullets?: string[];
-};
-
-export type ContentEntry = {
-  kind: ContentKind;
-  slug: string;
-  title: string;
-  description: string;
-  category: string;
-  shortAnswer?: string;
-  sections: ContentSection[];
-  related?: string[];
-  published: string;
-  updated?: string;
-};
-
+export type ContentSection = { heading: string; paragraphs?: string[]; bullets?: string[]; };
+export type ContentEntry = { kind: ContentKind; slug: string; title: string; description: string; category: string; shortAnswer?: string; sections: ContentSection[]; related?: string[]; published: string; updated?: string; };
 export const contentEntries: ContentEntry[] = [
-  {
-    kind: "question",
-    slug: "what-is-an-ai-accountability-partner",
-    title: "What Is an AI Accountability Partner?",
-    description: "Learn what an AI accountability partner is, how it works, and how regular check-ins can help you stay focused on your goals.",
-    category: "AI Accountability",
-    shortAnswer: "An AI accountability partner is a digital assistant that helps you follow through on goals by checking in, asking about progress, reminding you about commitments, and helping you decide what to do next. Unlike a passive tracker, it can make accountability part of an ongoing conversation.",
-    sections: [
-      { heading: "How does AI accountability work?", paragraphs: ["A useful accountability system starts with a clear goal and a repeatable check-in. You report what happened, identify what is blocking progress, and choose the next action instead of simply recording a streak."] },
-      { heading: "What should an AI accountability partner do?", bullets: ["Keep goals visible", "Prompt regular progress check-ins", "Help turn goals into concrete next actions", "Make missed progress easier to recover from", "Keep a useful history of progress"] },
-      { heading: "Where GotThis fits", paragraphs: ["GotThis brings goal tracking and accountability into WhatsApp so check-ins can happen in a conversation you already use instead of requiring another productivity dashboard to remember to open."] },
-    ],
-    related: ["how-to-stay-accountable-to-your-goals", "can-i-track-goals-through-whatsapp"],
-    published: "2026-08-30",
-  },
-  {
-    kind: "question",
-    slug: "how-to-stay-accountable-to-your-goals",
-    title: "How Do I Stay Accountable to My Goals?",
-    description: "A practical approach to staying accountable to your goals with clear commitments, regular check-ins and simple progress tracking.",
-    category: "Accountability",
-    shortAnswer: "Stay accountable by making your goal specific, choosing a measurable next action, setting a regular check-in, and recording whether you followed through. The most useful system makes missed commitments visible and helps you quickly choose the next action rather than abandoning the goal.",
-    sections: [
-      { heading: "Create a simple accountability loop", bullets: ["Define the outcome you want", "Choose the next measurable action", "Decide when you will check in", "Report what actually happened", "Adjust the next action when needed"] },
-      { heading: "Why consistency matters more than perfect streaks", paragraphs: ["Missing one action does not have to end a goal. A strong accountability process makes it easy to acknowledge a miss, understand why it happened, and resume with a realistic next step."] },
-    ],
-    related: ["what-is-an-ai-accountability-partner", "can-i-track-goals-through-whatsapp"],
-    published: "2026-08-30",
-  },
-  {
-    kind: "question",
-    slug: "can-i-track-goals-through-whatsapp",
-    title: "Can I Track My Goals Through WhatsApp?",
-    description: "Learn how WhatsApp can be used for goal check-ins, reminders, progress updates and accountability without another daily productivity app.",
-    category: "WhatsApp Goal Tracking",
-    shortAnswer: "Yes. You can track goals through WhatsApp by using regular check-ins, reminders and progress updates in a conversation. GotThis is designed around this approach, bringing goal tracking and accountability into WhatsApp so you can report progress without repeatedly opening a separate tracking app.",
-    sections: [
-      { heading: "How WhatsApp goal tracking works", bullets: ["Set a goal", "Define what progress looks like", "Choose a check-in rhythm", "Receive a prompt", "Report your progress", "Continue with the next action"] },
-      { heading: "Why use a conversation for goal tracking?", paragraphs: ["Traditional trackers depend on you remembering to visit them. Conversational tracking can move the check-in closer to where you already communicate, reducing the extra step between a reminder and a progress update."] },
-    ],
-    related: ["what-is-an-ai-accountability-partner", "how-to-stay-accountable-to-your-goals"],
-    published: "2026-08-30",
-  },
-  {
-    kind: "guide",
-    slug: "how-to-track-your-goals",
-    title: "How to Track Your Goals Without Making It Complicated",
-    description: "A practical guide to tracking goals with clear outcomes, measurable actions, useful check-ins and a simple review process.",
-    category: "Goal Tracking",
-    shortAnswer: "Effective goal tracking does not require a complicated dashboard. Define the outcome, identify the actions that move it forward, record progress consistently, and review often enough to change course when something is not working.",
-    sections: [
-      { heading: "Start with an outcome you can recognize", paragraphs: ["A goal becomes easier to track when you can clearly tell whether you are moving toward it. Replace vague intentions with an outcome and a timeframe that make progress observable."] },
-      { heading: "Track actions as well as outcomes", paragraphs: ["Long-term outcomes often move slowly. Tracking the actions you control gives you faster feedback and helps you distinguish a difficult goal from an inconsistent process."] },
-      { heading: "Use check-ins to decide what happens next", paragraphs: ["A check-in should do more than record a number. Use it to identify progress, blockers and the next concrete commitment. That turns tracking into an accountability loop."] },
-    ],
-    related: ["how-to-stay-accountable-to-your-goals", "can-i-track-goals-through-whatsapp"],
-    published: "2026-08-30",
-  },
+{kind:"question",slug:"what-is-an-ai-accountability-partner",title:"What Is an AI Accountability Partner?",description:"Learn how an AI accountability partner can check in on your goals and help you keep going.",category:"AI Accountability",shortAnswer:"An AI accountability partner helps you stay on track with your goals. It can check in with you, ask what you did, and remind you what you want to finish.",sections:[{heading:"How does it work?",paragraphs:["First, you pick a goal. For example: Read 10 pages every day. The AI checks in with you. You tell it what you did. Then you keep going."]},{heading:"What can it help with?",bullets:["Remind you about your goals","Ask how you are doing","Track your progress","Help you get back on track","Keep your goals easy to see"]},{heading:"How does GotThis help?",paragraphs:["GotThis brings these check-ins to WhatsApp. You can tell GotThis what you did in a simple message. You do not need to open another app just to log your progress."]}],related:["how-to-stay-accountable-to-your-goals","can-i-track-goals-through-whatsapp"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"question",slug:"how-to-stay-accountable-to-your-goals",title:"How Do I Stay Accountable to My Goals?",description:"Learn a simple way to stay on track with your goals and keep going when you miss a day.",category:"Accountability",shortAnswer:"Pick a clear goal. Check in often. Write down what you did. If you miss a day, start again. You do not need to be perfect. You just need to keep going.",sections:[{heading:"Use these five simple steps",bullets:["Pick one clear goal","Choose what you will do next","Pick a time to check in","Say what you did","Choose your next step"]},{heading:"What if I miss a day?",paragraphs:["Keep going. One missed day does not mean you failed. For example, if you planned to read 10 pages and read none, try again the next day. Your goal is still there."]}],related:["what-is-an-ai-accountability-partner","can-i-track-goals-through-whatsapp"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"question",slug:"can-i-track-goals-through-whatsapp",title:"Can I Track My Goals Through WhatsApp?",description:"Yes. You can use WhatsApp for goal check-ins, reminders and simple progress updates.",category:"WhatsApp Goal Tracking",shortAnswer:"Yes. GotThis lets you track goals through WhatsApp. Set a goal, get a check-in, and reply with what you did. For example: “I read 10 pages today.”",sections:[{heading:"How does it work?",bullets:["Set a goal","Pick what you want to track","Get a check-in","Reply with what you did","See your progress"]},{heading:"Why use WhatsApp?",paragraphs:["You already use WhatsApp to send messages. GotThis lets you use the same simple action to update your goals. You do not have to remember to open another app."]}],related:["what-is-an-ai-accountability-partner","how-to-stay-accountable-to-your-goals"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"guide",slug:"how-to-track-your-goals",title:"How to Track Your Goals",description:"A simple guide to setting a goal, tracking what you do and seeing your progress.",category:"Goal Tracking",shortAnswer:"Pick a clear goal. Decide what progress looks like. Write down what you do. Check your progress often. Keep it simple.",sections:[{heading:"Pick a goal you can understand",paragraphs:["Make your goal clear. Instead of saying “read more,” try “read 10 pages every day.” Now you know what to track."]},{heading:"Track the work you do",paragraphs:["Do not only look at the big finish line. Track the small steps too. If your goal is to write a book, you can track how many words or pages you write each day."]},{heading:"Check your progress",paragraphs:["Look at what you did. Ask one simple question: What should I do next? If you missed a day, start again."]}],related:["how-to-stay-accountable-to-your-goals","can-i-track-goals-through-whatsapp"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"landing",slug:"whatsapp-goal-tracker",title:"WhatsApp Goal Tracker",description:"Track your goals through WhatsApp. Send simple progress updates and see how close you are to your goal.",category:"WhatsApp Goal Tracking",shortAnswer:"GotThis lets you track goals with WhatsApp. Set a goal. Send a message when you make progress. GotThis keeps track of it for you.",sections:[{heading:"What is a WhatsApp goal tracker?",paragraphs:["It is a simple way to track goals by sending messages. For example, your goal may be to read 100 pages. After you read 20 pages, send a message that says: “I read 20 pages.”"]},{heading:"How does GotThis work?",bullets:["Set a goal","Connect WhatsApp","Get check-ins","Send your progress","See your progress on your dashboard"]},{heading:"Why use WhatsApp?",paragraphs:["You already know how to send a message. That makes goal updates fast and easy. You can do the work, send a short message, and move on with your day."]},{heading:"What can I track?",paragraphs:["You can track many kinds of goals. For example: read 10 pages, study for 30 minutes, write 500 words, or finish three lessons."]}],related:["can-i-track-goals-through-whatsapp","how-to-track-your-goals","ai-accountability-partner"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"landing",slug:"ai-accountability-partner",title:"AI Accountability Partner",description:"Get simple goal check-ins, share your progress and keep your goals in sight.",category:"AI Accountability",shortAnswer:"GotThis can be your AI accountability partner. It checks in about your goals. You tell it what you did. It helps you keep track and keep going.",sections:[{heading:"More than a reminder",paragraphs:["A reminder says: “Read today.” A check-in asks: “Did you read today?” You can answer: “Yes, I read 10 pages.” Now your progress is part of the conversation."]},{heading:"How does it work?",bullets:["Pick a goal","Get a check-in","Say what you did","See your progress","Keep going"]},{heading:"Why use AI?",paragraphs:["You can write like you normally do. For example: “I walked for 20 minutes today.” GotThis can use your message to help track your goal."]},{heading:"Use it through WhatsApp",paragraphs:["Your check-ins can happen in WhatsApp. You can reply with a short message instead of opening another app."]}],related:["what-is-an-ai-accountability-partner","how-to-stay-accountable-to-your-goals","whatsapp-goal-tracker"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"landing",slug:"accountability-app",title:"Accountability App for Goals",description:"Keep your goals in sight with simple check-ins and easy progress updates.",category:"Accountability",shortAnswer:"GotThis helps you remember your goals and say what you did. You get check-ins, send progress updates and see how you are doing.",sections:[{heading:"What should an accountability app do?",paragraphs:["It should help you remember your goal. It should ask how you are doing. It should make it easy to share your progress. That is it."]},{heading:"A simple way to stay on track",bullets:["Pick a goal","Get a check-in","Say what you did","See your progress","Choose what to do next"]},{heading:"What if I miss a day?",paragraphs:["Start again. You do not need a perfect streak. If you planned to study for 30 minutes and missed today, you can try again tomorrow."]}],related:["how-to-stay-accountable-to-your-goals","ai-accountability-partner","goal-tracking-app"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"landing",slug:"goal-tracking-app",title:"Simple Goal Tracking App",description:"Set goals, send quick updates and see your progress without making goal tracking hard.",category:"Goal Tracking",shortAnswer:"GotThis makes goal tracking simple. Pick a goal. Send updates through WhatsApp. Check your dashboard when you want to see your progress.",sections:[{heading:"What should you track?",paragraphs:["Track something you can see or count. For example: “Read 100 pages this month.” If you read 25 pages, you are 25% done."]},{heading:"Keep it simple",bullets:["Pick a goal","Do the work","Send an update","See your progress","Keep going"]},{heading:"Why use messages?",paragraphs:["Sending a message is quick. If you finish 30 minutes of study, you can tell GotThis right away. You do not need to fill out a long form."]}],related:["how-to-track-your-goals","whatsapp-goal-tracker","accountability-app"],published:"2026-08-30",updated:"2026-08-30"},
+{kind:"landing",slug:"goal-reminder-app",title:"Goal Reminder App With Check-Ins",description:"Get goal reminders that ask how you are doing, then send a quick update through WhatsApp.",category:"Goal Reminders",shortAnswer:"GotThis does more than remind you about a goal. It can check in and ask what you did. You can reply with your progress in a simple message.",sections:[{heading:"Why are reminders easy to ignore?",paragraphs:["A reminder can pop up and go away. You may swipe it away and forget about it. A check-in gives you a simple question to answer."]},{heading:"Turn a reminder into a check-in",bullets:["See your goal","Get a question","Say what you did","Track your progress","Keep going"]},{heading:"Reply in WhatsApp",paragraphs:["For example, GotThis can ask about your reading goal. You can reply: “I read 15 pages.” That is much easier than opening another app and filling out a form."]}],related:["accountability-app","ai-accountability-partner","whatsapp-goal-tracker"],published:"2026-08-30",updated:"2026-08-30"}
 ];
-
-export function getContent(kind: ContentKind, slug: string) {
-  return contentEntries.find((entry) => entry.kind === kind && entry.slug === slug);
-}
-
-export function getContentByKind(kind: ContentKind) {
-  return contentEntries.filter((entry) => entry.kind === kind);
-}
-
-export function contentPath(entry: ContentEntry) {
-  const roots: Record<ContentKind, string> = { question: "/questions", guide: "/guides", landing: "/features", comparison: "/compare" };
-  return `${roots[entry.kind]}/${entry.slug}`;
-}
+export function getContent(kind: ContentKind, slug: string) { return contentEntries.find((entry) => entry.kind === kind && entry.slug === slug); }
+export function getContentByKind(kind: ContentKind) { return contentEntries.filter((entry) => entry.kind === kind); }
+export function contentPath(entry: ContentEntry) { const roots: Record<ContentKind,string>={question:"/questions",guide:"/guides",landing:"/features",comparison:"/compare"}; return `${roots[entry.kind]}/${entry.slug}`; }
