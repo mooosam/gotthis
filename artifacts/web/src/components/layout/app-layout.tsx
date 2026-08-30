@@ -1,7 +1,6 @@
 import { useEffect } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useGetMyProfile, useListGoals } from "@workspace/api-client-react";
-import { Link } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
 import { LogOut, Settings, Menu, Moon, Sun } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -27,12 +26,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 function SidebarLogoutButton() { const { signOut } = useClerk(); return <button onClick={() => signOut()} data-testid="sidebar-logout" className="flex items-center gap-2.5 px-2.5 py-[6px] rounded-lg w-full cursor-pointer transition-colors hover:bg-red-50 dark:hover:bg-red-950/30 group" style={{fontSize:14,color:"#9CA3AF"}}><LogOut className="h-[14px] w-[14px] flex-shrink-0 group-hover:text-red-500 transition-colors" /><span className="group-hover:text-red-500 transition-colors">Log out</span></button>; }
 
 function Sidebar({ className, isAdmin, whatsappConnected }: { className?: string; isAdmin: boolean; whatsappConnected: boolean }) {
-  const [location] = useLocation(); const { data: goalsData } = useListGoals();
+  const [location] = useLocation();
+  const { data: goalsData } = useListGoals();
   const navItems = [
     {href:"/dashboard",label:"Dashboard"}, {href:"/activity",label:"Activity"}, {href:"/achievements",label:"Achievements"}, {href:"/goals",label:"Goals"},
     {href:`/review/${new Date().toISOString().split("T")[0]}`,label:"Review"}, {href:"/account",label:"Settings"}, ...(isAdmin?[{href:"/admin",label:"Admin"}]:[])
   ];
-  const categories = Array.from(new Map((goalsData?.goals??[]).filter(g=>g.status==="active"&&g.category).map(g=>[g.category.toLowerCase(),g.category])).values()).slice(0,6);
+  const categories = Array.from(new Map((goalsData ?? []).filter(g => g.status === "active" && g.category).map(g => [g.category.toLowerCase(), g.category])).values()).slice(0, 6);
   return <div className={className} style={{userSelect:"none"}}><div className="px-5 pt-7 pb-3"><ProfileButton whatsappConnected={whatsappConnected}/></div><nav className="flex-1 px-3 mt-3 overflow-y-auto">
     {navItems.map(item=>{const isActive=location===item.href||(item.href.startsWith("/review/")&&location.startsWith("/review/"))||(item.href==="/admin"&&location.startsWith("/admin"));return <Link key={item.href} href={item.href}><div data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g,"-")}`} className="flex items-center gap-2.5 px-2.5 py-[6px] rounded-lg mb-[2px] cursor-pointer transition-colors" style={{fontWeight:isActive?600:400,fontSize:14,color:isActive?"var(--sidebar-active-text, #111827)":"#6B7280",background:isActive?"#F3F4F6":"transparent"}}><span style={{width:6,height:6,borderRadius:1.5,background:isActive?"#111827":"#D1D5DB",flexShrink:0,display:"inline-block"}} />{item.label}</div></Link>})}
     {categories.length>0&&<div style={{marginTop:24,marginBottom:8}}><div style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",color:"#9CA3AF",padding:"0 10px",marginBottom:8,textTransform:"uppercase"}}>Goals</div>{categories.map(cat=><Link key={cat} href="/goals"><div className="flex items-center gap-2.5 px-2.5 py-[5px] rounded-lg mb-[2px] cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-sidebar-accent" style={{fontSize:13,color:"#6B7280"}}><span style={{width:7,height:7,borderRadius:"50%",background:getCategoryColor(cat),flexShrink:0,display:"inline-block"}}/><span style={{textTransform:"capitalize"}}>{cat}</span></div></Link>)}</div>}
