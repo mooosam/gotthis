@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  verify:
+  verify-web:
     runs-on: ubuntu-latest
     env:
       PORT: "3000"
@@ -22,5 +22,16 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm run typecheck
-      - run: pnpm --filter @workspace/web run build
+      - name: Typecheck web
+        run: pnpm --filter @workspace/web run typecheck
+      - name: Build and prerender web
+        run: pnpm --filter @workspace/web run build
+      - name: Verify prerendered HTML
+        run: |
+          test -f artifacts/web/dist/public/questions/what-is-an-ai-accountability-partner/index.html
+          grep -q 'What Is an AI Accountability Partner?' artifacts/web/dist/public/questions/what-is-an-ai-accountability-partner/index.html
+          test -f artifacts/web/dist/public/guides/how-to-track-your-goals/index.html
+          test -f artifacts/web/dist/public/features/whatsapp-goal-tracker/index.html
+          test -f artifacts/web/dist/public/compare/best-accountability-apps/index.html
+          test -f artifacts/web/dist/public/tools/goal-progress-calculator/index.html
+          grep -q 'https://gotthis.one/questions/what-is-an-ai-accountability-partner' artifacts/web/dist/public/sitemap.xml
