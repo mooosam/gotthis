@@ -8,6 +8,7 @@ import { setTokenGetter } from "./lib/api";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import SeoManager from "@/components/seo-manager";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import PricingPage from "@/pages/pricing";
@@ -48,12 +49,7 @@ function SignInPage() {
   const redirect = safeAuthRedirect("/dashboard");
   return (
     <div className="flex justify-center mt-8">
-      <SignIn
-        routing="path"
-        path={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up?redirect=${encodeURIComponent(redirect)}`}
-        fallbackRedirectUrl={`${basePath}${redirect}`}
-      />
+      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up?redirect=${encodeURIComponent(redirect)}`} fallbackRedirectUrl={`${basePath}${redirect}`} />
     </div>
   );
 }
@@ -61,12 +57,7 @@ function SignUpPage() {
   const redirect = safeAuthRedirect("/onboarding");
   return (
     <div className="flex justify-center mt-8">
-      <SignUp
-        routing="path"
-        path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/sign-in?redirect=${encodeURIComponent(redirect)}`}
-        fallbackRedirectUrl={`${basePath}${redirect}`}
-      />
+      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in?redirect=${encodeURIComponent(redirect)}`} fallbackRedirectUrl={`${basePath}${redirect}`} />
     </div>
   );
 }
@@ -74,7 +65,7 @@ function ClerkAuthSetup() { const { getToken } = useAuth(); useEffect(() => { co
 function ClerkQueryClientCacheInvalidator() { const { addListener } = useClerk(); const queryClient = useQueryClient(); const prevUserIdRef = useRef<string | null | undefined>(undefined); useEffect(() => { const unsubscribe = addListener(({ user }) => { const userId = user?.id ?? null; if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId) queryClient.clear(); prevUserIdRef.current = userId; }); return unsubscribe; }, [addListener, queryClient]); return null; }
 function HomePage() { const { isSignedIn, isLoaded } = useUser(); if (isLoaded && isSignedIn) return <Redirect to="/dashboard" />; return <LandingPage />; }
 function AdminGuard({ children }: { children: React.ReactNode }) { const { isSignedIn, isLoaded } = useUser(); const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null); React.useEffect(() => { if (!isLoaded || !isSignedIn) return; import("./lib/api").then(({ apiFetch }) => apiFetch("/api/users/me").then((r) => r.json()).then((u: { isAdmin?: boolean }) => setIsAdmin(u.isAdmin === true)).catch(() => setIsAdmin(false))); }, [isLoaded, isSignedIn]); if (!isLoaded || !isSignedIn) return <Redirect to="/" />; if (isAdmin === null) return null; if (!isAdmin) return <Redirect to="/" />; return <>{children}</>; }
-function ClerkProviderWithRoutes() { const [, setLocation] = useLocation(); return <ClerkProvider publishableKey={clerkPubKey} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><QueryClientProvider client={queryClient}><ClerkAuthSetup /><ClerkQueryClientCacheInvalidator /><Switch>
+function ClerkProviderWithRoutes() { const [, setLocation] = useLocation(); return <ClerkProvider publishableKey={clerkPubKey} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><QueryClientProvider client={queryClient}><ClerkAuthSetup /><ClerkQueryClientCacheInvalidator /><SeoManager /><Switch>
   <Route path="/" component={HomePage} /><Route path="/pricing" component={PricingPage} /><Route path="/faq" component={FaqPage} /><Route path="/contact" component={ContactPage} /><Route path="/terms" component={TermsPage} /><Route path="/cookies" component={CookiesPage} /><Route path="/data-policy" component={DataPolicyPage} />
   <Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} />
   <Route path="/go/:code">{(params) => <WhatsAppAuthPage code={params.code} />}</Route>
