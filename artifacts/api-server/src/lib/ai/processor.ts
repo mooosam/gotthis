@@ -6,6 +6,7 @@ import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
 import { createGoalFromMessage, cadenceFromClarification, completePendingGoalCadence } from "./goal-create.js";
+import { deleteGoalFromMessage, looksLikeExplicitGoalDelete } from "./goal-delete.js";
 import { checkPerMinuteThrottle } from "./throttle.js";
 import { createAuthenticatedShortLink } from "../whatsapp/auth-link.js";
 import { recordActivityEvent, type ActivitySource } from "../activity-events.js";
@@ -75,6 +76,21 @@ export async function processMessage(
     };
   }
 
+  // A direct single-goal delete is a backend action, not a coaching response.
+  // Handle strong explicit wording before AI classification so the model can
+  // never claim a goal was removed without the database mutation occurring.
+  if (looksLikeExplicitGoalDelete(safeMessage)) {
+    const result = await deleteGoalFromMessage(ctx, safeMessage, source);
+    await recordUsage(userId, 0, 0, 0);
+    const { budget: freshBudget } = await loadFreshBudget(userId);
+    return {
+      reply: result.response,
+      intent: "goal_delete",
+      dailyRemaining: freshBudget.dailyRemaining,
+      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
+    };
+  }
+
   const classification = await determineIntent(safeMessage, initialBudget.monthlyTokenRemaining);
   const { intent } = classification;
   if (classification.inputTokens > 0 || classification.outputTokens > 0) {
@@ -99,6 +115,9 @@ export async function processMessage(
     reply = result.response;
     totalInputTokens += result.inputTokens;
     totalOutputTokens += result.outputTokens;
+  } else if (intent === "goal_delete") {
+    const result = await deleteGoalFromMessage(ctx, safeMessage, source);
+    reply = result.response;
   } else if (intent === "off_topic") {
     reply = OFF_TOPIC_REPLY;
   } else if (intent === "morning_ritual") {
