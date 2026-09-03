@@ -3,7 +3,7 @@ import { logger } from "../logger.js";
 import { isPromptInjection } from "./policy.js";
 import type { MessageIntent } from "./classifier.js";
 
-export type AIIntent = MessageIntent | "goal_create";
+export type AIIntent = MessageIntent | "goal_create" | "goal_delete";
 
 export interface IntentResult {
   intent: AIIntent;
@@ -17,6 +17,7 @@ const VALID_INTENTS: AIIntent[] = [
   "evening_ritual",
   "goal_update",
   "goal_create",
+  "goal_delete",
   "dashboard",
   "check_in",
   "off_topic",
@@ -26,6 +27,7 @@ function fallbackIntent(message: string): AIIntent {
   const text = message.toLowerCase();
   if (/\bgood morning\b|\bmorning ritual\b|\bstart my day\b/.test(text)) return "morning_ritual";
   if (/\bgood evening\b|\bevening ritual\b|\bend my day\b/.test(text)) return "evening_ritual";
+  if (/\b(?:remove|delete)\b.*\bgoal\b|\b(?:remove|delete)\b\s+.+/.test(text)) return "goal_delete";
   if (/\b(add|create|set up|setup|start)\b.*\b(goal|milestone)\b/.test(text)) return "goal_create";
   if (/\b(dashboard|progress|performance|stats|statistics|graph|chart|overview|my goals)\b/.test(text)) return "dashboard";
   if (/\b(completed|finished|worked on|made progress|today i|i did|i ran|i walked|i wrote|i studied|i exercised)\b/.test(text)) return "goal_update";
@@ -55,7 +57,8 @@ Allowed intents:
 - morning_ritual: starting the day, morning check-in, setting today's intention
 - evening_ritual: ending the day, daily reflection, reviewing today's day
 - dashboard: viewing goals, progress, performance, statistics, charts, graphs, summaries, or asking how they are doing
-- goal_create: wants to create, add, set up, or start a goal or milestone; this opens the dashboard because goal creation is managed there
+- goal_create: wants to create, add, set up, or start a goal or milestone
+- goal_delete: explicitly wants to remove or delete one specific existing goal
 - goal_update: reporting work, progress, completion, or activity toward an existing goal
 - check_in: a goal-related question or conversation that does not fit another action
 - off_topic: unrelated to goals, milestones, rituals, progress, or the user's coaching experience
@@ -67,6 +70,9 @@ Important semantic examples:
 "What am I working toward?" -> dashboard
 "Let's add a Goal/Milestone today" -> goal_create
 "I want to set a new target" -> goal_create
+"Remove the sit-up goal" -> goal_delete
+"Delete my pushups goal" -> goal_delete
+"I don't want to track running anymore" -> goal_delete
 "I finished my workout" -> goal_update
 "Good morning" -> morning_ritual
 "Good night, let's review today" -> evening_ritual
