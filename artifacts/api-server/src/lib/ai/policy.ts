@@ -1,6 +1,6 @@
 export const MAX_USER_MESSAGE_CHARS = 1000;
 export const MAX_VOICE_TRANSCRIPTION_CHARS = 1000;
-export const MAX_ACTIONS_PER_REQUEST = 5;
+export const MAX_ACTIONS_PER_REQUEST = 20;
 
 export type PolicyDecision =
   | { allowed: true; normalizedMessage: string }
@@ -26,16 +26,17 @@ const INJECTION_PATTERNS = [
   /\bnew (?:system )?(?:prompt|instructions?)\b/i,
 ];
 
+// Goal management is intentionally excluded here. Creating, updating, or
+// deleting multiple goals is a normal GotThis feature and is validated by the
+// goal-management layer before any database mutation occurs.
 const BULK_PATTERNS = [
-  /\b(?:create|add|make|generate)\s+(?:\d{2,}|many|hundreds?|thousands?)\b/i,
-  /\b(?:delete|remove|complete|update)\s+(?:all|every|each|my entire)\b/i,
   /\b(?:do|perform|execute)\s+(?:\d{2,}|many|hundreds?|thousands?)\s+(?:actions?|requests?|operations?)\b/i,
 ];
 
+// Users may delete all of their goals through chat. Destructive operations on
+// the account or unrelated user data remain blocked.
 const DESTRUCTIVE_PATTERNS = [
-  /\bdelete\s+(?:all|every|everything|my goals?|my milestones?)\b/i,
-  /\bremove\s+(?:all|every|everything|my goals?|my milestones?)\b/i,
-  /\bclear\s+(?:all|everything|my goals?|my data|my account)\b/i,
+  /\bclear\s+(?:all|everything|my data|my account)\b/i,
   /\b(?:erase|wipe)\s+(?:all|everything|my data|my account)\b/i,
 ];
 
@@ -74,7 +75,7 @@ export function validateUserMessage(message: string): PolicyDecision {
     return {
       allowed: false,
       reason: "bulk_request",
-      reply: "I can help with one goal, milestone, or check-in at a time. Please send a smaller request.",
+      reply: "That request contains too many unrelated actions. Please make it a smaller goal-management request.",
     };
   }
 
@@ -82,7 +83,7 @@ export function validateUserMessage(message: string): PolicyDecision {
     return {
       allowed: false,
       reason: "destructive_request",
-      reply: "I won't make destructive changes through a chat request. Please use the dashboard to review and manage your goals.",
+      reply: "I won't erase account data through chat. You can manage your goals here, including deleting all goals.",
     };
   }
 
