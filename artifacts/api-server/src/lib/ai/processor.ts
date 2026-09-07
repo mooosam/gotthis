@@ -61,6 +61,21 @@ export async function processMessage(
   const initialBudget = checkBudgetForUser(ctx.user);
   if (!initialBudget.allowed) return { reply: initialBudget.reason ?? "You have reached your usage limit.", intent: "budget_exceeded", dailyRemaining: initialBudget.dailyRemaining, monthlyTokenRemaining: initialBudget.monthlyTokenRemaining, upgradePrompt: initialBudget.upgradePrompt };
 
+  // Bulk commands are explicit new instructions and override any pending
+  // clarification. This lets "delete all of them" work even if the previous
+  // turn was asking which single goal to delete.
+  if (looksLikeBulkGoalManagement(safeMessage)) {
+    const result = await manageMultipleGoalsFromMessage(ctx, safeMessage, source);
+    await recordUsage(userId, result.inputTokens, result.outputTokens, 0);
+    const { budget: freshBudget } = await loadFreshBudget(userId);
+    return {
+      reply: result.response,
+      intent: "goal_manage",
+      dailyRemaining: freshBudget.dailyRemaining,
+      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
+    };
+  }
+
   // If the previous turn produced an ambiguous delete question, the next user
   // message is treated as the clarification even when it doesn't repeat the
   // words remove/delete. Example: "Remove the sit-up" -> "The 50 sit up goal".
@@ -85,21 +100,6 @@ export async function processMessage(
     return {
       reply: result.response,
       intent: "goal_create",
-      dailyRemaining: freshBudget.dailyRemaining,
-      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
-    };
-  }
-
-  // Bulk goal management is a first-class chat action. This includes deleting
-  // all goals, adding several goals in one message, deleting several named
-  // goals, or applying one change to multiple goals.
-  if (looksLikeBulkGoalManagement(safeMessage)) {
-    const result = await manageMultipleGoalsFromMessage(ctx, safeMessage, source);
-    await recordUsage(userId, result.inputTokens, result.outputTokens, 0);
-    const { budget: freshBudget } = await loadFreshBudget(userId);
-    return {
-      reply: result.response,
-      intent: "goal_manage",
       dailyRemaining: freshBudget.dailyRemaining,
       monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
     };
