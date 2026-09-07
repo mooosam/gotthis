@@ -9,6 +9,9 @@ const STOP_WORDS = new Set([
   "rid", "stop", "the", "this", "to", "track", "tracking", "want", "would",
 ]);
 
+const PENDING_DELETE_TTL_MS = 10 * 60 * 1000;
+const pendingDeletes = new Map<string, { goalIds: string[]; expiresAt: number }>();
+
 function normalizeToken(token: string): string {
   let value = token.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (value.endsWith("ies") && value.length > 4) value = `${value.slice(0, -3)}y`;
@@ -37,6 +40,20 @@ function scoreGoalReference(message: string, title: string): number {
   return matches / requested.length;
 }
 
+function getPendingGoalIds(userId: string): string[] | null {
+  const pending = pendingDeletes.get(userId);
+  if (!pending) return null;
+  if (pending.expiresAt <= Date.now()) {
+    pendingDeletes.delete(userId);
+    return null;
+  }
+  return pending.goalIds;
+}
+
+export function hasPendingGoalDelete(userId: string): boolean {
+  return getPendingGoalIds(userId) !== null;
+}
+
 export function looksLikeExplicitGoalDelete(message: string): boolean {
   return /\b(?:remove|delete)\b/i.test(message) || /\b(?:stop|dont|don't)\b.*\btrack(?:ing)?\b/i.test(message);
 }
@@ -47,19 +64,36 @@ export async function deleteGoalFromMessage(
   source: ActivitySource,
 ): Promise<{ response: string; deleted: boolean }> {
   if (ctx.goals.length === 0) {
+    pendingDeletes.delete(ctx.user.id);
     return { response: "You don't have any active goals to remove.", deleted: false };
   }
 
-  const directId = ctx.goals.find((goal) => message.includes(goal.id));
+  const pendingGoalIds = getPendingGoalIds(ctx.user.id);
+  const candidateGoals = pendingGoalIds
+    ? ctx.goals.filter((goal) => pendingGoalIds.includes(goal.id))
+    : ctx.goals;
+
+  if (pendingGoalIds && candidateGoals.length === 0) {
+    pendingDeletes.delete(ctx.user.id);
+    return { response: "Those goals are no longer active. Tell me which current goal you'd like to remove.", deleted: false };
+  }
+
+  const directId = candidateGoals.find((goal) => message.includes(goal.id));
   const ranked = directId
     ? [{ goal: directId, score: 1 }]
-    : ctx.goals
+    : candidateGoals
         .map((goal) => ({ goal, score: scoreGoalReference(message, goal.title) }))
         .filter(({ score }) => score >= 0.6)
         .sort((a, b) => b.score - a.score);
 
   if (ranked.length === 0) {
-    const names = ctx.goals.slice(0, 5).map((goal) => `“${goal.title}”`).join(", ");
+    const names = candidateGoals.slice(0, 5).map((goal) => `“${goal.title}”`).join(", ");
+    if (pendingGoalIds) {
+      return {
+        response: `I still need to know which one you mean: ${names}.`,
+        deleted: false,
+      };
+    }
     return {
       response: `I couldn't find one active goal that clearly matches that request. Your active goals are ${names}. Tell me the exact one to remove.`,
       deleted: false,
@@ -69,16 +103,22 @@ export async function deleteGoalFromMessage(
   const best = ranked[0];
   const second = ranked[1];
   if (second && Math.abs(best.score - second.score) < 0.15) {
+    const tied = ranked
+      .filter(({ score }) => Math.abs(best.score - score) < 0.15)
+      .map(({ goal }) => goal);
+    pendingDeletes.set(ctx.user.id, {
+      goalIds: tied.map((goal) => goal.id),
+      expiresAt: Date.now() + PENDING_DELETE_TTL_MS,
+    });
+    const names = tied.slice(0, 5).map((goal) => `“${goal.title}”`).join(" or ");
     return {
-      response: `I found more than one possible match: “${best.goal.title}” and “${second.goal.title}”. Tell me which one to remove.`,
+      response: `I found more than one match: ${names}. Which one should I remove?`,
       deleted: false,
     };
   }
 
   const goal = best.goal;
 
-  // Record history before the hard delete. The activity ledger keeps the event
-  // even after the goal row is gone, while the goal foreign key is set null.
   await recordActivityEvent({
     userId: ctx.user.id,
     eventType: "goal_deleted",
@@ -97,5 +137,6 @@ export async function deleteGoalFromMessage(
     .delete(goalsTable)
     .where(and(eq(goalsTable.id, goal.id), eq(goalsTable.userId, ctx.user.id)));
 
+  pendingDeletes.delete(ctx.user.id);
   return { response: `Done — I removed “${goal.title}”.`, deleted: true };
 }
