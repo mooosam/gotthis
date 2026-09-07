@@ -6,7 +6,7 @@ import { runMorningRitual } from "./morning.js";
 import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
 import { createGoalFromMessage, cadenceFromClarification, completePendingGoalCadence } from "./goal-create.js";
-import { deleteGoalFromMessage, looksLikeExplicitGoalDelete } from "./goal-delete.js";
+import { deleteGoalFromMessage, hasPendingGoalDelete, looksLikeExplicitGoalDelete } from "./goal-delete.js";
 import { checkPerMinuteThrottle } from "./throttle.js";
 import { createAuthenticatedShortLink } from "../whatsapp/auth-link.js";
 import { recordActivityEvent, type ActivitySource } from "../activity-events.js";
@@ -60,9 +60,22 @@ export async function processMessage(
   const initialBudget = checkBudgetForUser(ctx.user);
   if (!initialBudget.allowed) return { reply: initialBudget.reason ?? "You have reached your usage limit.", intent: "budget_exceeded", dailyRemaining: initialBudget.dailyRemaining, monthlyTokenRemaining: initialBudget.monthlyTokenRemaining, upgradePrompt: initialBudget.upgradePrompt };
 
-  // Cadence clarification is conversational state, not a fresh intent. Handle a
-  // reply such as "weekly" before classification so it completes the pending
-  // goal instead of being mistaken for an unrelated one-word message.
+  // If the previous turn produced an ambiguous delete question, the next user
+  // message is treated as the clarification even when it doesn't repeat the
+  // words remove/delete. Example: "Remove the sit-up" -> "The 50 sit up goal".
+  if (hasPendingGoalDelete(userId)) {
+    const result = await deleteGoalFromMessage(ctx, safeMessage, source);
+    await recordUsage(userId, 0, 0, 0);
+    const { budget: freshBudget } = await loadFreshBudget(userId);
+    return {
+      reply: result.response,
+      intent: "goal_delete",
+      dailyRemaining: freshBudget.dailyRemaining,
+      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
+    };
+  }
+
+  // Cadence clarification is conversational state, not a fresh intent.
   const pendingCadence = cadenceFromClarification(safeMessage);
   if (pendingCadence && ctx.user.pendingGoalDraft) {
     const result = await completePendingGoalCadence(ctx, pendingCadence, source);
@@ -76,9 +89,6 @@ export async function processMessage(
     };
   }
 
-  // A direct single-goal delete is a backend action, not a coaching response.
-  // Handle strong explicit wording before AI classification so the model can
-  // never claim a goal was removed without the database mutation occurring.
   if (looksLikeExplicitGoalDelete(safeMessage)) {
     const result = await deleteGoalFromMessage(ctx, safeMessage, source);
     await recordUsage(userId, 0, 0, 0);
