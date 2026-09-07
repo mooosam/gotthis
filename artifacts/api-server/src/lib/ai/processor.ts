@@ -7,6 +7,7 @@ import { runEveningRitual } from "./evening.js";
 import { runCheckIn, OFF_TOPIC_REPLY } from "./checkin.js";
 import { createGoalFromMessage, cadenceFromClarification, completePendingGoalCadence } from "./goal-create.js";
 import { deleteGoalFromMessage, hasPendingGoalDelete, looksLikeExplicitGoalDelete } from "./goal-delete.js";
+import { looksLikeBulkGoalManagement, manageMultipleGoalsFromMessage } from "./goal-manage.js";
 import { checkPerMinuteThrottle } from "./throttle.js";
 import { createAuthenticatedShortLink } from "../whatsapp/auth-link.js";
 import { recordActivityEvent, type ActivitySource } from "../activity-events.js";
@@ -84,6 +85,21 @@ export async function processMessage(
     return {
       reply: result.response,
       intent: "goal_create",
+      dailyRemaining: freshBudget.dailyRemaining,
+      monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
+    };
+  }
+
+  // Bulk goal management is a first-class chat action. This includes deleting
+  // all goals, adding several goals in one message, deleting several named
+  // goals, or applying one change to multiple goals.
+  if (looksLikeBulkGoalManagement(safeMessage)) {
+    const result = await manageMultipleGoalsFromMessage(ctx, safeMessage, source);
+    await recordUsage(userId, result.inputTokens, result.outputTokens, 0);
+    const { budget: freshBudget } = await loadFreshBudget(userId);
+    return {
+      reply: result.response,
+      intent: "goal_manage",
       dailyRemaining: freshBudget.dailyRemaining,
       monthlyTokenRemaining: freshBudget.monthlyTokenRemaining,
     };
